@@ -22,7 +22,7 @@ function App() {
           <Route path="/accepted" element={<Accepted />} />
           <Route path="/spy/:id" element={<SpyDashboard />} />
           
-          {/* Routes Légales */}
+          {/* Route pour les pages légales */}
           <Route path="/legal/:type" element={<Legal />} />
 
           {/* Catch-all pour rediriger les mauvaises URLs vers l'accueil */}

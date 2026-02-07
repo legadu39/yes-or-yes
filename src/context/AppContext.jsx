@@ -139,6 +139,17 @@ export const AppProvider = ({ children }) => {
     }
   };
 
+  // Fonction helper pour récupérer les invitations possédées
+  const getOwnedInvitations = () => {
+    const stored = localStorage.getItem('yesoryes_owned');
+    if (!stored) return [];
+    try {
+      return JSON.parse(stored);
+    } catch (e) {
+      return [];
+    }
+  };
+
   // --- 2. LECTURE PUBLIQUE (Valentine) ---
   const getPublicInvitation = async (id) => {
     try {
@@ -173,14 +184,26 @@ export const AppProvider = ({ children }) => {
     });
   };
 
-  // CORRECTION : Implémentation de la fonction qui était vide
-  const incrementAttempts = async (id) => {
+  // 🔧 CORRECTION CRITIQUE : Implémentation complète avec les 3 paramètres
+  const incrementAttempts = async (id, newCount, newTime) => {
     try {
+      // Validation des paramètres
+      if (!id || newCount === undefined || newTime === undefined) {
+        console.warn("incrementAttempts: paramètres invalides", { id, newCount, newTime });
+        return;
+      }
+
       // On utilise la RPC pour incrémenter le compteur côté serveur de manière atomique
-      const { error } = await supabase.rpc('increment_attempts', { target_id: id });
+      const { error } = await supabase.rpc('increment_attempts', { 
+        target_id: id,
+        new_count: parseInt(newCount),
+        new_time: parseFloat(newTime)
+      });
+      
       if (error) console.error("Erreur incrementAttempts", error);
     } catch (e) {
       // Erreur silencieuse pour ne pas gêner le jeu
+      console.warn("incrementAttempts silent error:", e);
     }
   };
 
@@ -254,7 +277,8 @@ export const AppProvider = ({ children }) => {
     incrementAttempts,
     acceptInvitation,
     verifyPaymentStatus,
-    ownedInvitations
+    ownedInvitations,
+    getOwnedInvitations
   };
 
   return (

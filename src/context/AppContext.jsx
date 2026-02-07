@@ -1,6 +1,18 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { v4 as uuidv4 } from 'uuid';
+
+// --- STABILITY FIX: NATIVE UUID GENERATOR ---
+// Removes the dependency on the 'uuid' package to prevent minification errors ("n is not a function")
+const generateUUID = () => {
+  // 1. Modern Browsers (Preferred)
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  // 2. Fallback for older environments
+  return '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, c =>
+    (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
+  );
+};
 
 const AppContext = createContext();
 
@@ -24,7 +36,6 @@ export const AppProvider = ({ children }) => {
     }
 
     // 2. Queue de Synchronisation (Resilience Offline)
-    // On vérifie s'il y a des actions en attente (ex: un OUI cliqué hors connexion)
     const syncPendingActions = async () => {
       const pending = localStorage.getItem('pending_acceptance');
       if (pending) {
@@ -47,7 +58,6 @@ export const AppProvider = ({ children }) => {
       }
     };
 
-    // On tente une synchro au démarrage si internet est là
     if (navigator.onLine) {
       syncPendingActions();
     }
@@ -56,23 +66,21 @@ export const AppProvider = ({ children }) => {
   // --- 1. CRÉATION (Admin) ---
   const createInvitation = async (sender, valentine, plan) => {
     try {
-      // GÉNÉRATION CLIENT-SIDE (Architecture Robuste)
-      // On génère l'ID et le token nous-mêmes pour garantir la cohérence immédiate
-      const newId = uuidv4();
-      const newToken = uuidv4(); // UUID standard pour le token admin
+      // Utilisation de notre générateur interne stable
+      const newId = generateUUID();
+      const newToken = generateUUID();
 
-      // MAPPING CORRIGÉ : On utilise les noms de colonnes exacts de la Table SQL
       const { data, error } = await supabase
         .from('invitations')
         .insert([
           {
             id: newId,
-            sender: sender,          // SQL: sender
-            valentine: valentine,    // SQL: valentine
-            plan: plan,              // SQL: plan
-            admin_token: newToken,   // SQL: admin_token
-            game_status: 'pending',  // SQL: game_status
-            payment_status: 'unpaid' // SQL: payment_status
+            sender: sender,
+            valentine: valentine,
+            plan: plan,
+            admin_token: newToken,
+            game_status: 'pending',
+            payment_status: 'unpaid'
           }
         ])
         .select()
@@ -83,12 +91,10 @@ export const AppProvider = ({ children }) => {
         throw error;
       }
 
-      // Mise à jour du store local
-      // On normalise l'objet pour le frontend
       const newInvitation = {
         id: newId,
         valentine: valentine,
-        token: newToken, // On garde 'token' pour l'usage local du front
+        token: newToken,
         createdAt: new Date().toISOString()
       };
 
@@ -96,7 +102,6 @@ export const AppProvider = ({ children }) => {
       setOwnedInvitations(updatedList);
       localStorage.setItem('yesoryes_owned', JSON.stringify(updatedList));
 
-      // On retourne l'objet attendu par Home.jsx
       return { id: newId, token: newToken };
 
     } catch (error) {
@@ -107,21 +112,18 @@ export const AppProvider = ({ children }) => {
 
   const getSpyReport = async (id, token) => {
     try {
-      // Sécurité : On vérifie que le token (admin_token) correspond bien à l'ID
       const { data, error } = await supabase
         .from('invitations')
         .select('*')
         .eq('id', id)
-        .eq('admin_token', token) // MAPPING CORRIGÉ : admin_token dans la DB
+        .eq('admin_token', token)
         .single();
 
       if (error) throw error;
 
-      // Transformation pour compatibilité front si nécessaire
-      // La table a 'game_status', le front attend parfois 'status'
       return {
         ...data,
-        status: data.game_status // Alias pour compatibilité
+        status: data.game_status
       };
     } catch (error) {
       console.error("Accès refusé ou erreur rapport espion:", error);
@@ -132,27 +134,22 @@ export const AppProvider = ({ children }) => {
   // --- 2. LECTURE PUBLIQUE (Valentine) ---
   const getPublicInvitation = async (id) => {
     try {
-      // On récupère uniquement les champs nécessaires pour l'affichage public
-      // MAPPING CORRIGÉ : Noms de colonnes exacts de la DB
       const { data, error } = await supabase
         .from('invitations')
         .select('sender, valentine, plan, game_status, payment_status, attempts, viewed_at')
         .eq('id', id)
         .single();
 
-      if (error) return null; // Invitation introuvable ou erreur
+      if (error) return null;
 
-      // VERIFICATION PAIEMENT
-      // Si le paiement n'est pas 'paid', on ne montre rien (Sécurité Anti-Gratteurs)
       if (data.payment_status !== 'paid') {
         console.warn("Invitation trouvée mais non payée.");
         return null;
       }
 
-      // Normalisation pour le front
       return {
         ...data,
-        status: data.game_status // Alias pour le front qui utilise .status
+        status: data.game_status
       };
     } catch (error) {
       console.error("Erreur getPublicInvitation:", error);
@@ -162,37 +159,26 @@ export const AppProvider = ({ children }) => {
 
   // --- 3. TRACKING (Analytics & Jeu) ---
   const markAsViewed = async (id) => {
-    // Fire & Forget : On ne bloque pas l'UI pour ça
-    // On utilise la RPC pour la sécurité (mise à jour contrôlée)
     supabase.rpc('mark_invitation_viewed', { target_id: id }).then(({ error }) => {
       if (error) console.error("Erreur markAsViewed", error);
     });
   };
 
   const incrementAttempts = async (id) => {
-    // Idem, tracking silencieux des clics sur "NON"
-    // On passe des valeurs factices pour new_count/new_time car géré par le front souvent, 
-    // ou on adapte la RPC. Ici on appelle la RPC existante.
-    // Note: Ta RPC demande new_count et new_time.
-    // Pour simplifier l'appel depuis le front qui n'a pas toujours le count :
-    // On suppose que le front gère le state.
-    // Si la fonction n'est pas critique, on laisse le log.
+     // Placeholder pour futur usage ou appel RPC existant
   };
 
   // --- 4. ACTION FINALE (Le grand OUI) ---
   const acceptInvitation = async (id) => {
     try {
-      // 1. Sauvegarde locale immédiate (Optimistic & Offline First)
       localStorage.setItem('pending_acceptance', JSON.stringify({
         id,
         time: Date.now()
       }));
 
-      // 2. Tentative d'envoi Beacon (Plus fiable lors des redirections/fermetures)
       if (navigator.sendBeacon) {
         const url = `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/rpc/answer_invitation`;
         
-        // Fetch avec keepalive est souvent plus robuste pour Supabase Auth
         const response = await fetch(url, {
           method: 'POST',
           headers: {
@@ -213,7 +199,6 @@ export const AppProvider = ({ children }) => {
         }
       }
 
-      // 3. Fallback sur le client standard
       const { error } = await supabase
         .rpc('answer_invitation', {
           target_id: id,
@@ -227,7 +212,7 @@ export const AppProvider = ({ children }) => {
 
     } catch (error) {
       console.warn("Erreur réseau acceptInvitation (sauvegardé en local pour retry):", error);
-      return false; // On retourne false mais c'est sauvegardé en local
+      return false;
     }
   };
 
@@ -235,7 +220,6 @@ export const AppProvider = ({ children }) => {
   const verifyPaymentStatus = async (id) => {
     try {
       const data = await getPublicInvitation(id);
-      // Si data existe, c'est que le paiement est validé (grâce au filtre getPublicInvitation)
       return !!data;
     } catch (error) {
       console.error("Erreur verifyPaymentStatus:", error);
@@ -262,5 +246,3 @@ export const AppProvider = ({ children }) => {
 };
 
 export default AppContext;
-
-// on corrige

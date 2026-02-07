@@ -2,13 +2,10 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 
 // --- UTILITAIRE DE GÉNÉRATION D'ID (Sans dépendance externe) ---
-// Remplace 'uuid' pour éviter les erreurs de build/import "n is not a function"
 const generateUUID = () => {
-  // Méthode moderne (Navigateurs récents & HTTPS)
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return crypto.randomUUID();
   }
-  // Fallback robuste (Compatible tout navigateur)
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
     var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
     return v.toString(16);
@@ -20,12 +17,10 @@ const AppContext = createContext();
 export const useApp = () => useContext(AppContext);
 
 export const AppProvider = ({ children }) => {
-  // Gestion de l'état local pour l'historique des invitations créées (Admin)
   const [ownedInvitations, setOwnedInvitations] = useState([]);
 
-  // --- INIT & SYNC ---
   useEffect(() => {
-    // 1. Récupération de l'historique propriétaire
+    // Récupération de l'historique propriétaire
     const stored = localStorage.getItem('yesoryes_owned');
     if (stored) {
       try {
@@ -36,7 +31,7 @@ export const AppProvider = ({ children }) => {
       }
     }
 
-    // 2. Queue de Synchronisation (Resilience Offline)
+    // Queue de Synchronisation
     const syncPendingActions = async () => {
       const pending = localStorage.getItem('pending_acceptance');
       if (pending) {
@@ -54,7 +49,7 @@ export const AppProvider = ({ children }) => {
             localStorage.removeItem('pending_acceptance');
           }
         } catch (e) {
-          console.warn("Échec synchro silencieuse (sera réessayé plus tard)", e);
+          console.warn("Échec synchro silencieuse", e);
         }
       }
     };
@@ -64,62 +59,104 @@ export const AppProvider = ({ children }) => {
     }
   }, []);
 
-  // --- 1. CRÉATION (Admin) ---
+  // --- CRÉATION AVEC GESTION D'ERREUR ROBUSTE ---
   const createInvitation = async (sender, valentine, plan) => {
     try {
-      // GÉNÉRATION CLIENT-SIDE (Version Native)
+      // Validation des entrées
+      if (!sender?.trim() || !valentine?.trim() || !plan) {
+        throw new Error("Paramètres invalides");
+      }
+
+      // Génération des IDs
       const newId = generateUUID();
       const newToken = generateUUID();
 
-      // MAPPING TABLE SQL
+      console.log('🔧 Tentative création invitation:', { 
+        id: newId.substring(0, 8), 
+        sender: sender.trim(), 
+        valentine: valentine.trim(), 
+        plan 
+      });
+
+      // 🔧 CORRECTION 1 : Sélection explicite des colonnes nécessaires
       const { data, error } = await supabase
         .from('invitations')
         .insert([
           {
             id: newId,
-            sender: sender,          // SQL: sender
-            valentine: valentine,    // SQL: valentine
-            plan: plan,              // SQL: plan
-            admin_token: newToken,   // SQL: admin_token
-            game_status: 'pending',  // SQL: game_status
-            payment_status: 'unpaid' // SQL: payment_status
+            sender: sender.trim(),
+            valentine: valentine.trim(),
+            plan: plan,
+            admin_token: newToken,
+            game_status: 'pending',
+            payment_status: 'unpaid'
           }
         ])
-        .select()
+        .select('id, admin_token')  // ✅ Sélection explicite uniquement des colonnes retournées
         .single();
 
+      // 🔧 CORRECTION 2 : Logging détaillé en cas d'erreur
       if (error) {
-        console.error("Erreur createInvitation (DB):", error);
+        console.error("❌ Erreur Supabase détaillée:", {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        });
+        
+        // Messages d'erreur spécifiques
+        if (error.code === '42501') {
+          throw new Error("Permission refusée. Vérifiez les politiques RLS.");
+        }
+        if (error.code === '23505') {
+          throw new Error("ID en conflit. Réessayez.");
+        }
+        if (error.message?.includes('columns')) {
+          throw new Error("Erreur de structure de table. Contactez le support.");
+        }
+        
         throw error;
       }
+
+      // 🔧 CORRECTION 3 : Validation du retour
+      if (!data) {
+        console.error("❌ Pas de données retournées par Supabase");
+        throw new Error("La création a échoué silencieusement");
+      }
+
+      console.log('✅ Invitation créée avec succès:', data);
 
       // Mise à jour du store local
       const newInvitation = {
         id: newId,
-        valentine: valentine,
+        valentine: valentine.trim(),
         token: newToken,
         createdAt: new Date().toISOString()
       };
 
-      // Protection contre undefined
       const currentList = Array.isArray(ownedInvitations) ? ownedInvitations : [];
       const updatedList = [newInvitation, ...currentList];
       
       setOwnedInvitations(updatedList);
       localStorage.setItem('yesoryes_owned', JSON.stringify(updatedList));
 
+      // 🔧 CORRECTION 4 : Retour garanti avec les bonnes valeurs
       return { id: newId, token: newToken };
 
     } catch (error) {
-      console.error("Erreur critique création:", error);
-      // On retourne null pour que l'UI puisse gérer l'erreur
+      console.error("💥 Erreur critique création:", {
+        name: error.name,
+        message: error.message,
+        stack: error.stack
+      });
+      
+      // 🔧 CORRECTION 5 : Retour null au lieu de throw pour permettre l'UI de gérer
       return null;
     }
   };
 
   const getSpyReport = async (id, token) => {
     try {
-      // Sécurité : On vérifie que le token (admin_token) correspond bien à l'ID
       const { data, error } = await supabase
         .from('invitations')
         .select('*')
@@ -127,11 +164,14 @@ export const AppProvider = ({ children }) => {
         .eq('admin_token', token)
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error("Erreur getSpyReport:", error);
+        throw error;
+      }
 
       return {
         ...data,
-        status: data.game_status // Alias pour compatibilité
+        status: data.game_status
       };
     } catch (error) {
       console.error("Accès refusé ou erreur rapport espion:", error);
@@ -139,7 +179,6 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  // Fonction helper pour récupérer les invitations possédées
   const getOwnedInvitations = () => {
     const stored = localStorage.getItem('yesoryes_owned');
     if (!stored) return [];
@@ -150,20 +189,22 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  // --- 2. LECTURE PUBLIQUE (Valentine) ---
   const getPublicInvitation = async (id) => {
     try {
       const { data, error } = await supabase
         .from('invitations')
-        .select('sender, valentine, plan, game_status, payment_status, attempts, viewed_at')
+        .select('id, sender, valentine, plan, game_status, payment_status, attempts, viewed_at')
         .eq('id', id)
         .single();
 
-      if (error) return null;
+      if (error) {
+        console.error("Erreur getPublicInvitation:", error);
+        return null;
+      }
 
-      // VERIFICATION PAIEMENT (Sécurité Anti-Gratteurs)
+      // Vérification paiement
       if (data.payment_status !== 'paid') {
-        console.warn("Invitation trouvée mais non payée.");
+        console.warn("Invitation trouvée mais non payée");
         return null;
       }
 
@@ -177,46 +218,42 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  // --- 3. TRACKING (Analytics & Jeu) ---
   const markAsViewed = async (id) => {
-    supabase.rpc('mark_invitation_viewed', { target_id: id }).then(({ error }) => {
-      if (error) console.error("Erreur markAsViewed", error);
-    });
+    try {
+      const { error } = await supabase.rpc('mark_invitation_viewed', { target_id: id });
+      if (error) console.error("Erreur markAsViewed:", error);
+    } catch (e) {
+      console.warn("markAsViewed silent error:", e);
+    }
   };
 
-  // 🔧 CORRECTION CRITIQUE : Implémentation complète avec les 3 paramètres
   const incrementAttempts = async (id, newCount, newTime) => {
     try {
-      // Validation des paramètres
       if (!id || newCount === undefined || newTime === undefined) {
         console.warn("incrementAttempts: paramètres invalides", { id, newCount, newTime });
         return;
       }
 
-      // On utilise la RPC pour incrémenter le compteur côté serveur de manière atomique
       const { error } = await supabase.rpc('increment_attempts', { 
         target_id: id,
         new_count: parseInt(newCount),
         new_time: parseFloat(newTime)
       });
       
-      if (error) console.error("Erreur incrementAttempts", error);
+      if (error) console.error("Erreur incrementAttempts:", error);
     } catch (e) {
-      // Erreur silencieuse pour ne pas gêner le jeu
       console.warn("incrementAttempts silent error:", e);
     }
   };
 
-  // --- 4. ACTION FINALE (Le grand OUI) ---
   const acceptInvitation = async (id) => {
     try {
-      // 1. Sauvegarde locale
       localStorage.setItem('pending_acceptance', JSON.stringify({
         id,
         time: Date.now()
       }));
 
-      // 2. Tentative Beacon/Fetch Keepalive
+      // Tentative avec keepalive
       if (navigator.sendBeacon) {
         const url = `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/rpc/answer_invitation`;
         
@@ -240,12 +277,11 @@ export const AppProvider = ({ children }) => {
         }
       }
 
-      // 3. Fallback client standard
-      const { error } = await supabase
-        .rpc('answer_invitation', {
-          target_id: id,
-          answer: 'accepted'
-        });
+      // Fallback
+      const { error } = await supabase.rpc('answer_invitation', {
+        target_id: id,
+        answer: 'accepted'
+      });
 
       if (error) throw error;
       
@@ -258,7 +294,6 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  // --- 5. UTILITAIRES ---
   const verifyPaymentStatus = async (id) => {
     try {
       const data = await getPublicInvitation(id);

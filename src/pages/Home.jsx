@@ -247,37 +247,60 @@ const Home = () => {
   }, []);
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!formData.sender.trim() || !formData.valentine.trim()) return;
+  e.preventDefault();
+  if (!formData.sender.trim() || !formData.valentine.trim()) return;
+  
+  setStatus('processing');
+  
+  try {
+    // 🔧 CORRECTION : Gestion robuste du retour null
+    const result = await createInvitation(
+      formData.sender.trim(), 
+      formData.valentine.trim(), 
+      formData.plan
+    );
     
-    setStatus('processing');
-    
-    try {
-      const { id, token } = await createInvitation(formData.sender.trim(), formData.valentine.trim(), formData.plan);
-      
-      if (!id || !token) throw new Error("Erreur lors de la génération des clés");
-
-      setStatus('paying');
-      
-      const statePayload = btoa(JSON.stringify({ 
-          t: token, 
-          id: id,
-          s: formData.sender,
-          v: formData.valentine
-      }));
-      
-      const returnUrl = encodeURIComponent(`${window.location.origin}/?payment_id=${id}&success=true&state=${statePayload}`);
-      const stripeUrl = formData.plan === 'spy' ? STRIPE_LINKS.spy : STRIPE_LINKS.basic;
-
-      window.location.href = `${stripeUrl}?client_reference_id=${id}&redirect_url=${returnUrl}`; 
-
-    } catch (error) {
-      console.error("Erreur critique:", error);
-      setStatus('error');
-      alert("Une erreur technique est survenue. Veuillez réessayer.");
+    // 🔧 Vérification explicite avant destructuration
+    if (!result) {
+      throw new Error("La création a échoué. Vérifiez votre connexion.");
     }
-  };
+    
+    const { id, token } = result;
+    
+    if (!id || !token) {
+      throw new Error("Données invalides retournées");
+    }
+    
+    console.log('✅ Invitation créée:', { id: id.substring(0, 8), hasToken: !!token });
+    
+    setStatus('paying');
+    
+    const statePayload = btoa(JSON.stringify({ 
+      t: token, 
+      id: id,
+      s: formData.sender,
+      v: formData.valentine
+    }));
+    
+    const returnUrl = encodeURIComponent(
+      `${window.location.origin}/?payment_id=${id}&success=true&state=${statePayload}`
+    );
+    const stripeUrl = formData.plan === 'spy' ? STRIPE_LINKS.spy : STRIPE_LINKS.basic;
 
+    window.location.href = `${stripeUrl}?client_reference_id=${id}&redirect_url=${returnUrl}`; 
+
+  } catch (error) {
+    console.error("❌ Erreur critique handleSubmit:", error);
+    setStatus('error');
+    
+    // 🔧 Message d'erreur plus détaillé pour l'utilisateur
+    const errorMessage = error.message || "Une erreur technique est survenue";
+    alert(`Impossible de créer l'invitation.\n\n${errorMessage}\n\nVeuillez réessayer ou contacter le support.`);
+    
+    // 🔧 Retour à l'état initial après 3 secondes
+    setTimeout(() => setStatus('idle'), 3000);
+  }
+};
   const handleShare = async (text, field) => {
     if (navigator.share && navigator.canShare) {
         try {

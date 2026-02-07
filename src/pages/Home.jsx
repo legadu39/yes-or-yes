@@ -28,8 +28,7 @@ const Home = () => {
     getSpyReport, 
     verifyPaymentStatus, 
     getOwnedInvitations, 
-    saveOwnedInvitation,
-    confirmPayment // AJOUT : Import de la fonction de validation
+    saveOwnedInvitation
   } = useApp();
 
   const [formData, setFormData] = useState({ sender: '', valentine: '', plan: 'spy' });
@@ -69,15 +68,28 @@ const Home = () => {
     const owned = getOwnedInvitations();
     if (owned.length > 0) setHasHistory(true);
 
-    const paymentId = searchParams.get('payment_id');
+    const paymentId = searchParams.get('payment_id') || searchParams.get('id');
     const fromStripe = searchParams.get('success');
     const stateParam = searchParams.get('state');
 
-    // Cas 1 : Retour standard avec paramètres URL
-    if (paymentId && fromStripe === 'true' && !generatedLinks) {
-      handlePaymentReturn(paymentId, owned, stateParam);
+    if (paymentId && !generatedLinks) {
+      // Si on a le paramètre success ou state, on traite le retour complet (Retour Stripe officiel)
+      if (fromStripe === 'true' || stateParam) {
+        handlePaymentReturn(paymentId, owned, stateParam);
+      } 
+      // NOUVEAU : Si on a juste l'ID (test manuel ou lien direct), on vérifie simplement le statut
+      else {
+        verifyPaymentStatus(paymentId).then(isPaid => {
+          if (isPaid) {
+            const foundLocal = owned.find(i => i.id === paymentId);
+            // On affiche le succès. Si foundLocal n'existe pas (nouvel appareil), token sera undefined
+            // mais displaySuccess gérera l'affichage minimal (Lien Valentine seulement).
+            displaySuccess({ id: paymentId, ...foundLocal }, foundLocal?.token);
+          }
+        });
+      }
     } 
-    // Cas 2 : Retour silencieux (Stripe Payment Link sans params)
+    // Cas 2 : Retour silencieux (Stripe Payment Link sans params, pas d'ID dans l'URL)
     else if (!generatedLinks && owned.length > 0 && status === 'idle') {
       const lastOrder = owned[owned.length - 1];
       const diff = new Date() - new Date(lastOrder.createdAt);
@@ -88,7 +100,7 @@ const Home = () => {
         });
       }
     }
-  }, [searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const preloadAssets = () => {
     if (window.hasPreloaded) return;
@@ -99,6 +111,8 @@ const Home = () => {
   };
 
   const handlePaymentReturn = async (paymentId, owned, stateParam) => {
+    console.log("Traitement retour paiement pour:", paymentId);
+    
     // INTELLIGENCE : RÉCUPÉRATION CROSS-BOUNDARY N1
     let foundToken = null;
     let recoveredData = null;
@@ -128,14 +142,6 @@ const Home = () => {
       }
     }
 
-    // --- LOGIQUE CRITIQUE AJOUTÉE : Auto-validation ---
-    if (foundToken) {
-      console.log("⚡ Validation immédiate du paiement via Token...");
-      // C'est cette ligne qui débloque la situation en validant côté serveur
-      await confirmPayment(paymentId, foundToken);
-    }
-    // --------------------------------------------------
-
     // INTELLIGENCE UI OPTIMISTE N2
     if (foundToken) {
       // On construit un objet "optimiste" pour afficher tout de suite le résultat
@@ -146,10 +152,13 @@ const Home = () => {
         plan: 'spy'
       };
       
-      // On affiche le succès immédiatement car on vient de valider
+      // On affiche le succès immédiatement (mode confiance)
       displaySuccess(optimisticInvite, foundToken);
+      
+      // Et on lance une vérification silencieuse en arrière-plan pour être sûr
+      verifyBackgroundSilent(paymentId, foundToken);
     } else {
-      // Fallback si le token est perdu
+      // Fallback si le token est perdu : on doit attendre que le serveur confirme
       waitForServerValidation(paymentId, foundLocal);
     }
   };
@@ -160,9 +169,11 @@ const Home = () => {
     
     const poll = async () => {
       attempts++;
+      // getSpyReport ne marchera que si le paiement est validé ET le token correct
       const fullInvite = await getSpyReport(paymentId, token);
       
       if (fullInvite) {
+        console.log("Validation silencieuse confirmée");
         localStorage.removeItem('draft_invitation');
       } else if (attempts < MAX_ATTEMPTS) {
         setTimeout(poll, 3000);
@@ -179,6 +190,7 @@ const Home = () => {
 
     const poll = async () => {
       attempts++;
+      // verifyPaymentStatus utilise getPublicInvitation (accessible sans token)
       const isPaid = await verifyPaymentStatus(paymentId);
       
       if (isPaid) {
@@ -195,6 +207,7 @@ const Home = () => {
           console.warn("Paiement validé mais token local introuvable.");
           displayMinimalSuccess(paymentId, 'unknown');
           alert("Paiement validé ! Note : Nous ne retrouvons pas votre clé secrète. Vous avez accès au lien public uniquement.");
+          // Nettoyage URL
           window.history.replaceState({}, document.title, window.location.pathname);
         }
       } else if (attempts < MAX_ATTEMPTS) {
@@ -202,7 +215,7 @@ const Home = () => {
         setTimeout(poll, delay);
       } else {
         setStatus('error');
-        alert("Le paiement est validé mais le serveur met du temps. Rechargez la page.");
+        alert("Le paiement est validé mais le serveur met du temps. Rechargez la page dans quelques instants.");
       }
     };
     poll();
@@ -214,7 +227,7 @@ const Home = () => {
     
     setGeneratedLinks({
       valentine: `${window.location.origin}/v/${invite.id}`,
-      spy: (invite.plan === 'spy' || !invite.plan) 
+      spy: (token && (invite.plan === 'spy' || !invite.plan))
         ? `${window.location.origin}/spy/${invite.id}?token=${token}` 
         : null
     });
@@ -270,7 +283,6 @@ const Home = () => {
     setStatus('processing');
 
     try {
-      // CORRECTION : Gestion robuste du retour null
       const result = await createInvitation(
         formData.sender.trim(),
         formData.valentine.trim(),
@@ -293,6 +305,7 @@ const Home = () => {
       setStatus('paying');
 
       const statePayload = btoa(JSON.stringify({ t: token, id: id, s: formData.sender, v: formData.valentine }));
+      // On utilise payment_id pour être cohérent avec la logique de retour
       const returnUrl = encodeURIComponent(`${window.location.origin}?payment_id=${id}&success=true&state=${statePayload}`);
       
       const stripeUrl = formData.plan === 'spy' ? STRIPE_LINKS.spy : STRIPE_LINKS.basic;
@@ -303,11 +316,9 @@ const Home = () => {
       console.error("❌ Erreur critique handleSubmit:", error);
       setStatus('error');
       
-      // Message d'erreur plus détaillé pour l'utilisateur
       const errorMessage = error.message || "Une erreur technique est survenue";
       alert(`Impossible de créer l'invitation. ${errorMessage}. Réessayez ou contactez le support.`);
       
-      // Retour à l'état initial après 3 secondes
       setTimeout(() => setStatus('idle'), 3000);
     }
   };

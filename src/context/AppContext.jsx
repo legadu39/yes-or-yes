@@ -1,17 +1,18 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 
-// --- STABILITY FIX: GÉNÉRATEUR UUID NATIF (ZERO DEPENDENCY) ---
-// On supprime l'import 'uuid' qui causait le crash "n is not a function" en prod.
+// --- UTILITAIRE DE GÉNÉRATION D'ID (Sans dépendance externe) ---
+// Remplace 'uuid' pour éviter les erreurs de build/import "n is not a function"
 const generateUUID = () => {
-  // 1. Méthode moderne (99% des navigateurs récents)
+  // Méthode moderne (Navigateurs récents & HTTPS)
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return crypto.randomUUID();
   }
-  // 2. Fallback robuste pour les anciens environnements
-  return '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, c =>
-    (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
-  );
+  // Fallback robuste (Compatible tout navigateur)
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
 };
 
 const AppContext = createContext();
@@ -66,21 +67,22 @@ export const AppProvider = ({ children }) => {
   // --- 1. CRÉATION (Admin) ---
   const createInvitation = async (sender, valentine, plan) => {
     try {
-      // Utilisation de notre générateur interne stable
+      // GÉNÉRATION CLIENT-SIDE (Version Native)
       const newId = generateUUID();
       const newToken = generateUUID();
 
+      // MAPPING TABLE SQL
       const { data, error } = await supabase
         .from('invitations')
         .insert([
           {
             id: newId,
-            sender: sender,
-            valentine: valentine,
-            plan: plan,
-            admin_token: newToken,
-            game_status: 'pending',
-            payment_status: 'unpaid'
+            sender: sender,          // SQL: sender
+            valentine: valentine,    // SQL: valentine
+            plan: plan,              // SQL: plan
+            admin_token: newToken,   // SQL: admin_token
+            game_status: 'pending',  // SQL: game_status
+            payment_status: 'unpaid' // SQL: payment_status
           }
         ])
         .select()
@@ -91,6 +93,7 @@ export const AppProvider = ({ children }) => {
         throw error;
       }
 
+      // Mise à jour du store local
       const newInvitation = {
         id: newId,
         valentine: valentine,
@@ -98,7 +101,10 @@ export const AppProvider = ({ children }) => {
         createdAt: new Date().toISOString()
       };
 
-      const updatedList = [newInvitation, ...ownedInvitations];
+      // Protection contre undefined
+      const currentList = Array.isArray(ownedInvitations) ? ownedInvitations : [];
+      const updatedList = [newInvitation, ...currentList];
+      
       setOwnedInvitations(updatedList);
       localStorage.setItem('yesoryes_owned', JSON.stringify(updatedList));
 
@@ -106,12 +112,14 @@ export const AppProvider = ({ children }) => {
 
     } catch (error) {
       console.error("Erreur critique création:", error);
-      return { id: null, token: null };
+      // On retourne null pour que l'UI puisse gérer l'erreur
+      return null;
     }
   };
 
   const getSpyReport = async (id, token) => {
     try {
+      // Sécurité : On vérifie que le token (admin_token) correspond bien à l'ID
       const { data, error } = await supabase
         .from('invitations')
         .select('*')
@@ -123,7 +131,7 @@ export const AppProvider = ({ children }) => {
 
       return {
         ...data,
-        status: data.game_status
+        status: data.game_status // Alias pour compatibilité
       };
     } catch (error) {
       console.error("Accès refusé ou erreur rapport espion:", error);
@@ -142,6 +150,7 @@ export const AppProvider = ({ children }) => {
 
       if (error) return null;
 
+      // VERIFICATION PAIEMENT (Sécurité Anti-Gratteurs)
       if (data.payment_status !== 'paid') {
         console.warn("Invitation trouvée mais non payée.");
         return null;
@@ -164,18 +173,27 @@ export const AppProvider = ({ children }) => {
     });
   };
 
+  // CORRECTION : Implémentation de la fonction qui était vide
   const incrementAttempts = async (id) => {
-     // Placeholder pour futur usage ou appel RPC existant
+    try {
+      // On utilise la RPC pour incrémenter le compteur côté serveur de manière atomique
+      const { error } = await supabase.rpc('increment_attempts', { target_id: id });
+      if (error) console.error("Erreur incrementAttempts", error);
+    } catch (e) {
+      // Erreur silencieuse pour ne pas gêner le jeu
+    }
   };
 
   // --- 4. ACTION FINALE (Le grand OUI) ---
   const acceptInvitation = async (id) => {
     try {
+      // 1. Sauvegarde locale
       localStorage.setItem('pending_acceptance', JSON.stringify({
         id,
         time: Date.now()
       }));
 
+      // 2. Tentative Beacon/Fetch Keepalive
       if (navigator.sendBeacon) {
         const url = `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/rpc/answer_invitation`;
         
@@ -199,6 +217,7 @@ export const AppProvider = ({ children }) => {
         }
       }
 
+      // 3. Fallback client standard
       const { error } = await supabase
         .rpc('answer_invitation', {
           target_id: id,
@@ -211,7 +230,7 @@ export const AppProvider = ({ children }) => {
       return true;
 
     } catch (error) {
-      console.warn("Erreur réseau acceptInvitation (sauvegardé en local pour retry):", error);
+      console.warn("Erreur réseau acceptInvitation:", error);
       return false;
     }
   };

@@ -14,28 +14,25 @@ const ValentinePage = () => {
   const [noBtnStyle, setNoBtnStyle] = useState({});
   const [isPlaying, setIsPlaying] = useState(false);
   const [yesScale, setYesScale] = useState(1);
-  const [escapeCount, setEscapeCount] = useState(0);
   const [hasInteracted, setHasInteracted] = useState(false);
   
-  // INTELLIGENCE N°4 : ANTI-FRUSTRATION
-  const [missClickCount, setMissClickCount] = useState(0);
+  // INTELLIGENCE : ÉTATS DE JEU & PHYSIQUE
+  const [escapeCount, setEscapeCount] = useState(0);
+  const [fatigueLevel, setFatigueLevel] = useState(0); // 0 à 100% de fatigue
 
   const audioRef = useRef(null); 
   const startTimeRef = useRef(Date.now()); 
   const btnRef = useRef(null); 
   const lastMousePos = useRef({ x: 0, y: 0 });
 
-  // INTELLIGENCE : DÉTECTION DE ROBOTS
+  // DÉTECTION ROBOTS (Pour ne pas fausser les stats)
   const isLikelyBot = () => {
     const agent = navigator.userAgent.toLowerCase();
-    if (agent.includes('bot') || agent.includes('crawl') || agent.includes('facebook') || agent.includes('whatsapp') || agent.includes('google')) {
-        return true;
-    }
-    return false;
+    return agent.includes('bot') || agent.includes('crawl') || agent.includes('facebook') || agent.includes('whatsapp') || agent.includes('google');
   };
 
   useEffect(() => {
-    // INTELLIGENCE : CIRCUIT BREAKER AUDIO
+    // AUDIO : Circuit Breaker (Backup en cas d'erreur de chargement)
     if (!audioRef.current) {
         const playlist = [
             '/assets/music.ogg',
@@ -48,14 +45,12 @@ const ValentinePage = () => {
         
         const loadAudio = (index) => {
             if (index >= playlist.length) return;
-
             audioRef.current.src = playlist[index];
             audioRef.current.onerror = () => {
-                console.warn(`Source audio ${index} inaccessible, bascule sur backup...`);
+                console.warn(`⚠️ Audio source ${index} failed, switching to backup...`);
                 loadAudio(index + 1);
             };
         };
-
         loadAudio(0);
     }
 
@@ -64,26 +59,15 @@ const ValentinePage = () => {
       const data = await getPublicInvitation(id);
       
       if (!data) { 
-        // Si pas de données (ex: non payé ou ID invalide), on redirige
         navigate('/'); 
       } else {
-        // ✅ NOUVELLE VÉRIFICATION
+        // GESTION INTELLIGENTE DE L'ÉTAT DE PAIEMENT
         if (data.payment_status !== 'paid') {
-          // Afficher un écran d'attente au lieu de bloquer
-          setInvitation({ ...data, isPending: true });
-      } else {
-        setInvitation(data);
-      }
-        
-        
-        startTimeRef.current = Date.now();
-        
-        // INTELLIGENCE : Marquer comme "Vu" pour le Dashboard Espion
-        // Uniquement si ce n'est pas un robot
-        if (!isLikelyBot()) {
-            markAsViewed(id);
+            setInvitation({ ...data, isPending: true });
         } else {
-            console.log("🤖 Visite de robot détectée - Statistiques ignorées.");
+            setInvitation(data);
+            startTimeRef.current = Date.now();
+            if (!isLikelyBot()) markAsViewed(id);
         }
       }
       setLoading(false);
@@ -103,7 +87,7 @@ const ValentinePage = () => {
     if (audioRef.current) {
         audioRef.current.play()
             .then(() => setIsPlaying(true))
-            .catch(e => console.error("Erreur lecture audio (User interaction required):", e));
+            .catch(e => console.error("Auto-play prevented:", e));
     }
     setHasInteracted(true);
   };
@@ -122,25 +106,21 @@ const ValentinePage = () => {
     }
   };
 
-  const handleBackgroundClick = (e) => {
-     if (e.target.tagName === 'BUTTON' || e.target.closest('button')) return;
-     setMissClickCount(prev => prev + 1);
-  };
-
-  // --- INTELLIGENCE : BOUTON FUYANT DYNAMIQUE ---
+  // --- MOTEUR PHYSIQUE ADAPTATIF (INTELLIGENCE UX) ---
   const moveButton = (e) => {
-    if (e) {
-        if (e.preventDefault) e.preventDefault();
-        if (e.stopPropagation) e.stopPropagation();
-    }
-
     if (!invitation) return;
-    
-    // Si c'est un bot qui essaie de cliquer (peu probable mais bon), on ignore
     if (isLikelyBot()) return;
 
+    // 1. Détection du type d'input (Touch vs Mouse)
+    const isTouch = e.type.includes('touch');
+    if (isTouch) {
+        // Sur mobile, on empêche le scroll/zoom accidentel
+        // e.preventDefault(); // Commenté pour ne pas bloquer totalement l'UX si nécessaire
+    }
+
+    // 2. Calcul Vecteur Vélocité (Pour fuir intelligemment)
     let clientX, clientY;
-    if (e.type === 'touchstart' || e.type === 'touchmove') {
+    if (isTouch) {
         clientX = e.touches[0].clientX;
         clientY = e.touches[0].clientY;
     } else {
@@ -148,28 +128,37 @@ const ValentinePage = () => {
         clientY = e.clientY;
     }
 
-    const deltaX = clientX - lastMousePos.current.x;
-    const deltaY = clientY - lastMousePos.current.y;
-    const speed = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
     lastMousePos.current = { x: clientX, y: clientY };
 
-    const panicFactor = Math.min(speed / 20, 2.0); 
-    const mercyFactor = Math.min(0.8, missClickCount * 0.1); 
-    const fatigue = Math.max(0.2, (1 - Math.max(0, escapeCount - 15) * 0.05) - mercyFactor);
-
+    // 3. Incrémenter la "Fatigue" du bouton
+    // Sur mobile, il se fatigue 2x plus vite pour éviter la rage
+    const fatigueIncrement = isTouch ? 10 : 4;
+    const newFatigue = Math.min(fatigueLevel + fatigueIncrement, 100);
+    setFatigueLevel(newFatigue);
+    
+    // Stats
     setEscapeCount(prev => prev + 1);
-    setYesScale(prev => Math.min(prev + 0.08, 2.2)); 
-
+    setYesScale(prev => Math.min(prev + 0.05, 2.0)); 
     const currentTime = getElapsedTime();
-    incrementAttempts(invitation.id, invitation.attempts + escapeCount, currentTime);
+    incrementAttempts(invitation.id, invitation.attempts + escapeCount + 1, currentTime);
 
-    const baseJump = 150 + (escapeCount * 5);
-    const jumpDistance = (baseJump * (1 + panicFactor)) * fatigue;
-    const baseTime = 0.4;
-    const transitionTime = Math.max(0.15, (baseTime / (1 + panicFactor)) / fatigue);
+    // 4. Calcul de la physique (Amortissement basé sur la fatigue)
+    // À 0% fatigue : Vivacité 1.0
+    // À 100% fatigue : Vivacité 0.1 (presque immobile)
+    const vivacity = Math.max(0.1, 1 - (newFatigue / 80)); 
+    
+    // Distance de saut : Base * Vivacité
+    // Mobile : distance de base réduite (100px vs 200px desktop)
+    const baseJump = isTouch ? 90 : 200;
+    const jumpDistance = baseJump * vivacity; 
 
-    if (navigator.vibrate) navigator.vibrate(panicFactor > 1 ? 80 : 30);
+    // Vitesse de transition (Plus il est fatigué, plus il est lent)
+    const transitionTime = Math.max(0.2, 0.8 - (vivacity * 0.6)); // 0.2s (vif) à 0.8s (lent)
 
+    // Feedback Haptique (Vibration décroissante)
+    if (navigator.vibrate && vivacity > 0.5) navigator.vibrate(20);
+
+    // 5. Calcul Nouvelle Position (Fuite vectorielle simplifiée + Random)
     const btnRect = btnRef.current 
         ? btnRef.current.getBoundingClientRect() 
         : { left: window.innerWidth/2, top: window.innerHeight/2, width: 100, height: 40 };
@@ -177,35 +166,30 @@ const ValentinePage = () => {
     const btnCenterX = btnRect.left + btnRect.width / 2;
     const btnCenterY = btnRect.top + btnRect.height / 2;
 
+    // Vecteur directionnel (du curseur vers le bouton)
     let dirX = btnCenterX - clientX;
     let dirY = btnCenterY - clientY;
+    
+    // Normalisation
+    const length = Math.sqrt(dirX * dirX + dirY * dirY) || 1;
+    dirX /= length;
+    dirY /= length;
 
-    const length = Math.sqrt(dirX * dirX + dirY * dirY);
-    if (length === 0) {
-        dirX = Math.random() - 0.5;
-        dirY = Math.random() - 0.5;
-    } else {
-        dirX = dirX / length;
-        dirY = dirY / length;
-    }
-
-    const angleJitter = (Math.random() - 0.5) * 1.5; 
+    // Ajout chaos (Jitter) pour ne pas être trop prédictible
+    const angleJitter = (Math.random() - 0.5) * 2.0; 
     const finalDirX = dirX * Math.cos(angleJitter) - dirY * Math.sin(angleJitter);
     const finalDirY = dirX * Math.sin(angleJitter) + dirY * Math.cos(angleJitter);
 
     let nextX = btnRect.left + (finalDirX * jumpDistance);
     let nextY = btnRect.top + (finalDirY * jumpDistance);
 
-    const safePadding = 20;
-    const btnWidth = btnRect.width || 100;
-    const btnHeight = btnRect.height || 50;
-    const minX = safePadding;
-    const maxX = window.innerWidth - btnWidth - safePadding;
-    const minY = safePadding;
-    const maxY = window.innerHeight - btnHeight - safePadding;
+    // Garde-fous (Rester dans l'écran)
+    const padding = 20;
+    const maxX = window.innerWidth - (btnRect.width || 100) - padding;
+    const maxY = window.innerHeight - (btnRect.height || 50) - padding;
 
-    nextX = Math.max(minX, Math.min(nextX, maxX));
-    nextY = Math.max(minY, Math.min(nextY, maxY));
+    nextX = Math.max(padding, Math.min(nextX, maxX));
+    nextY = Math.max(padding, Math.min(nextY, maxY));
 
     setNoBtnStyle({
       position: 'fixed',
@@ -213,41 +197,38 @@ const ValentinePage = () => {
       top: `${nextY}px`,
       transition: `all ${transitionTime}s cubic-bezier(0.25, 0.46, 0.45, 0.94)`, 
       zIndex: 50,
-      opacity: Math.max(0.2, 1 - escapeCount * 0.1)
+      opacity: Math.max(0.4, 1 - (escapeCount * 0.02)) // Reste visible
     });
   };
 
   const handleYes = async () => {
-    if (navigator.vibrate) navigator.vibrate([100, 50, 100, 50, 200]);
+    if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
 
-    const duration = 3000;
+    // INTELLIGENCE : SYNC OFFLINE-FIRST (CRITIQUE)
+    // 1. On sauvegarde l'intention immédiatement en local
+    // Si le réseau coupe maintenant, AppContext le renverra plus tard.
+    localStorage.setItem('pending_acceptance', JSON.stringify({ 
+        id: invitation.id, 
+        time: Date.now() 
+    }));
+
+    // 2. Effets visuels (Confetti)
+    const duration = 2500;
     const end = Date.now() + duration;
 
     const frame = () => {
-      confetti({
-        particleCount: 5,
-        angle: 60,
-        spread: 55,
-        origin: { x: 0 },
-        colors: ['#D24D57', '#B76E79', '#FFFDD0']
-      });
-      confetti({
-        particleCount: 5,
-        angle: 120,
-        spread: 55,
-        origin: { x: 1 },
-        colors: ['#D24D57', '#B76E79', '#FFFDD0']
-      });
-
-      if (Date.now() < end) {
-        requestAnimationFrame(frame);
-      }
+      confetti({ particleCount: 5, angle: 60, spread: 55, origin: { x: 0 }, colors: ['#D24D57', '#B76E79', '#FFFDD0'] });
+      confetti({ particleCount: 5, angle: 120, spread: 55, origin: { x: 1 }, colors: ['#D24D57', '#B76E79', '#FFFDD0'] });
+      if (Date.now() < end) requestAnimationFrame(frame);
     };
     frame();
 
+    // 3. Tentative réseau (Optimiste)
+    // On ne bloque pas l'UI sur le await, on navigue dès que possible
     const finalTime = getElapsedTime();
-    acceptInvitation(invitation.id, finalTime);
+    acceptInvitation(invitation.id, finalTime); 
     
+    // 4. Navigation différée pour profiter du moment
     setTimeout(() => {
         navigate('/accepted');
     }, 1200);
@@ -259,6 +240,7 @@ const ValentinePage = () => {
     </div>
   );
 
+  // ÉCRAN DE DÉMARRAGE (REQUIRED POUR AUDIO SUR MOBILE)
   if (!hasInteracted) {
     return (
         <div 
@@ -267,47 +249,45 @@ const ValentinePage = () => {
         >
              <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-ruby-light/20 via-ruby-dark to-[#1a0508] pointer-events-none"></div>
              
-             <div className="relative group p-10">
+             <div className="relative group p-10 text-center">
                 <MailOpen className="w-24 h-24 text-rose-gold animate-bounce mb-6 mx-auto drop-shadow-lg" />
                 <h2 className="text-3xl font-script text-rose-pale text-center mb-2">Une lettre pour vous</h2>
                 <p className="text-cream/60 text-xs uppercase tracking-widest text-center animate-pulse">
                     Toucher pour ouvrir
                 </p>
-                <div className="absolute inset-0 border border-rose-gold/20 rounded-full scale-150 opacity-0 group-hover:scale-100 group-hover:opacity-100 transition-all duration-700"></div>
+                {invitation.sender && (
+                    <p className="mt-4 text-rose-gold/50 font-serif italic text-sm">De la part de {invitation.sender}</p>
+                )}
              </div>
         </div>
     );
   }
 
-// ✅ ÉCRAN D'ATTENTE PAIEMENT
-if (invitation?.isPending) {
-  return (
-    <div className="h-screen w-screen bg-ruby-dark flex flex-col items-center justify-center relative overflow-hidden z-50">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-ruby-light/20 via-ruby-dark to-[#1a0508] pointer-events-none"></div>
-      
-      <div className="relative z-10 text-center p-8">
-        <div className="mb-6">
+  // ÉCRAN D'ATTENTE PAIEMENT (CAS RARE MAIS GÉRÉ)
+  if (invitation?.isPending) {
+    return (
+      <div className="h-screen w-screen bg-ruby-dark flex flex-col items-center justify-center relative overflow-hidden z-50">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-ruby-light/20 via-ruby-dark to-[#1a0508] pointer-events-none"></div>
+        <div className="relative z-10 text-center p-8">
           <Heart className="w-16 h-16 text-rose-gold animate-pulse mx-auto mb-4" />
-        </div>
-        <h2 className="text-3xl font-script text-rose-pale mb-4">Validation en cours...</h2>
-        <p className="text-cream/60 text-sm mb-6">
-          {invitation.sender} finalise sa commande.<br/>
-          Vous recevrez l'invitation d'ici quelques instants.
-        </p>
-        <div className="flex justify-center gap-2">
-          <div className="w-2 h-2 bg-rose-gold rounded-full animate-bounce" style={{animationDelay: '0s'}}></div>
-          <div className="w-2 h-2 bg-rose-gold rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
-          <div className="w-2 h-2 bg-rose-gold rounded-full animate-bounce" style={{animationDelay: '0.4s'}}></div>
+          <h2 className="text-3xl font-script text-rose-pale mb-4">Un instant...</h2>
+          <p className="text-cream/60 text-sm mb-6">
+            L'invitation est en cours de scellage.<br/>
+            Veuillez patienter quelques secondes.
+          </p>
+          <div className="flex justify-center gap-2">
+            <div className="w-2 h-2 bg-rose-gold rounded-full animate-bounce" style={{animationDelay: '0s'}}></div>
+            <div className="w-2 h-2 bg-rose-gold rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+            <div className="w-2 h-2 bg-rose-gold rounded-full animate-bounce" style={{animationDelay: '0.4s'}}></div>
+          </div>
         </div>
       </div>
-    </div>
-  );
-}
+    );
+  }
+
+  // INTERFACE PRINCIPALE
   return (
-    <div 
-        onClick={handleBackgroundClick} 
-        className="h-screen w-screen bg-ruby-dark overflow-hidden relative flex flex-col items-center justify-center select-none animate-fade-in-slow"
-    >
+    <div className="h-screen w-screen bg-ruby-dark overflow-hidden relative flex flex-col items-center justify-center select-none animate-fade-in-slow">
       
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-ruby-light/30 via-ruby-dark to-[#1a0508] pointer-events-none"></div>
       <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-ruby-DEFAULT/20 rounded-full blur-[100px] pointer-events-none animate-pulse-slow"></div>
@@ -354,7 +334,7 @@ if (invitation?.isPending) {
               onClick={(e) => e.stopPropagation()} 
               className="px-6 py-3 text-rose-pale/40 font-serif border border-rose-pale/10 hover:border-ruby-light/30 hover:text-ruby-light/60 transition-all text-sm tracking-[0.2em] uppercase cursor-none backdrop-blur-sm rounded-full"
           >
-              {escapeCount === 0 ? "Non, merci" : "Impossible..."}
+              {escapeCount === 0 ? "Non, merci" : fatigueLevel > 80 ? "Bon, d'accord..." : "Impossible..."}
           </button>
 
         </div>

@@ -8,8 +8,9 @@ export const useApp = () => useContext(AppContext);
 export const AppProvider = ({ children }) => {
   const [ownedInvitations, setOwnedInvitations] = useState([]);
 
-  // useEffect: Récupération de l'historique propriétaire
+  // --- INITIALISATION & SYNCHRONISATION ---
   useEffect(() => {
+    // 1. Charger l'historique local
     const stored = localStorage.getItem('yesoryes_owned');
     if (stored) {
       try {
@@ -20,13 +21,14 @@ export const AppProvider = ({ children }) => {
       }
     }
     
-    // Queue de Synchronisation
+    // 2. Synchronisation "Offline-First" des réponses en attente
     const syncPendingActions = async () => {
-      const pending = localStorage.getItem('pending_acceptance');
-      if (pending) {
+      // A. Sync du "OUI" (Acceptance)
+      const pendingYes = localStorage.getItem('pending_acceptance');
+      if (pendingYes) {
         try {
-          const { id, time } = JSON.parse(pending);
-          console.log("Tentative de synchronisation pour id:", id);
+          const { id, time } = JSON.parse(pendingYes);
+          console.log("🔄 Tentative de synchronisation différée (OUI) pour:", id);
           
           const { error } = await supabase.rpc('answer_invitation', { 
             target_id: id, 
@@ -34,11 +36,13 @@ export const AppProvider = ({ children }) => {
           });
 
           if (!error) {
-            console.log("Synchro réussie !");
+            console.log("✅ Synchro réussie !");
             localStorage.removeItem('pending_acceptance');
+          } else {
+             console.warn("⚠️ Échec synchro:", error);
           }
         } catch (e) {
-          console.warn("Échec synchro silencieuse", e);
+          console.warn("Erreur process synchro", e);
         }
       }
     };
@@ -46,57 +50,41 @@ export const AppProvider = ({ children }) => {
     if (navigator.onLine) {
       syncPendingActions();
     }
+    
+    // Écouteur pour réessayer quand le réseau revient
+    window.addEventListener('online', syncPendingActions);
+    return () => window.removeEventListener('online', syncPendingActions);
   }, []);
 
-  // --- CRÉATION VIA RPC V2 (SÉCURITÉ & RESPONSABILITÉ DB) ---
+  // --- CRÉATION VIA RPC V2 ---
   const createInvitation = async (sender, valentine, plan) => {
     try {
-      // Validation des entrées
       if (!sender?.trim() || !valentine?.trim() || !plan) {
         throw new Error("Paramètres invalides");
       }
 
-      console.log("Appel RPC create_invitation_v2", { sender, valentine, plan });
+      console.log("🚀 Appel RPC create_invitation_v2", { sender, valentine, plan });
 
-      // APPEL RPC : On laisse la DB gérer les IDs et Tokens
-      // La fonction create_invitation_v2 doit retourner un JSON ou un record avec { id, admin_token }
       const { data, error } = await supabase.rpc('create_invitation_v2', {
         p_sender: sender.trim(),
         p_valentine: valentine.trim(),
         p_plan: plan
       });
 
-      // Gestion d'erreur détaillée
       if (error) {
-        console.error("❌ Erreur RPC create_invitation_v2:", {
-          message: error.message,
-          code: error.code,
-          details: error.details
-        });
-        
+        console.error("❌ Erreur RPC create_invitation_v2:", error);
         if (error.code === '42501') throw new Error("Permission refusée par la base de données.");
         throw error;
       }
 
-      // Validation du retour
-      if (!data) {
-        console.error("⚠️ Pas de données retournées par le RPC.");
-        throw new Error("Erreur technique: Pas de retour de la base de données.");
-      }
+      if (!data) throw new Error("Erreur technique: Pas de retour DB.");
 
-      // Extraction des données retournées par la fonction SQL
-      // On gère les deux cas possibles de retour (camelCase ou snake_case selon ta fonction SQL)
+      // Normalisation du retour (camelCase vs snake_case)
       const newId = data.id || data.new_id;
       const newToken = data.admin_token || data.new_token || data.token;
 
-      if (!newId || !newToken) {
-         console.error("⚠️ Structure de retour inattendue:", data);
-         throw new Error("Erreur technique: Données incomplètes.");
-      }
+      if (!newId || !newToken) throw new Error("Données incomplètes retournées.");
 
-      console.log("✅ Invitation créée avec succès (DB)", newId);
-
-      // Mise à jour du store local avec les données certifiées par la DB
       const newInvitation = { 
         id: newId, 
         sender: sender.trim(),
@@ -105,25 +93,53 @@ export const AppProvider = ({ children }) => {
         createdAt: new Date().toISOString() 
       };
 
-      const currentList = Array.isArray(ownedInvitations) ? ownedInvitations : [];
-      const updatedList = [newInvitation, ...currentList];
-      
-      setOwnedInvitations(updatedList);
-      localStorage.setItem('yesoryes_owned', JSON.stringify(updatedList));
+      updateOwnedInvitations(newInvitation);
 
-      // Retour garanti avec les bonnes valeurs pour la redirection
       return { id: newId, token: newToken };
 
     } catch (error) {
-      console.error("🚨 Erreur critique création:", {
-        name: error.name,
-        message: error.message
-      });
+      console.error("🚨 Erreur critique création:", error);
       return null;
     }
   };
 
-  // --- LECTURE RAPPORT ESPION VIA RPC ---
+  // --- UTILITAIRE DE MISE A JOUR LOCALSTORAGE ---
+  const updateOwnedInvitations = (invitation) => {
+    setOwnedInvitations(prev => {
+        // Éviter les doublons
+        const filtered = prev.filter(i => i.id !== invitation.id);
+        const updated = [invitation, ...filtered];
+        localStorage.setItem('yesoryes_owned', JSON.stringify(updated));
+        return updated;
+    });
+  };
+
+  // --- INTELLIGENCE : RÉCUPÉRATION PAR SESSION STRIPE ---
+  const recoverBySessionId = async (sessionId) => {
+    if (!sessionId) return null;
+    
+    console.log("🕵️ Tentative récupération par Session ID:", sessionId);
+    
+    // Essayer de trouver une invitation locale qui correspond (optimisation)
+    // Note: On ne stocke pas le session_id localement au départ, donc ceci est une fallback future
+    
+    try {
+        // On tente de récupérer l'invitation publique associée à ce session ID
+        // Note: Cela nécessite que la colonne stripe_session_id soit accessible ou via une RPC
+        // Si RLS bloque, cette requête peut échouer. 
+        // Solution de contournement : on appelle getPublicInvitation sur les ID récents du cache si possible
+        // Mais ici, supposons qu'on utilise une méthode de force brute sur les ownedInvitations si l'ID manque
+        
+        // Comme nous n'avons pas créé de RPC spécifique 'get_by_session', 
+        // nous allons nous appuyer sur la logique de Home.jsx qui combine ID et Session.
+        // Cette fonction sert de placeholder pour une future RPC 'recover_lost_invitation'
+        return null; 
+    } catch (e) {
+        console.error("Erreur recovery", e);
+        return null;
+    }
+  };
+
   const getSpyReport = async (id, token) => {
     try {
       const { data, error } = await supabase.rpc('get_spy_report', {
@@ -131,11 +147,7 @@ export const AppProvider = ({ children }) => {
         token_input: token
       });
 
-      if (error) {
-        console.error("Erreur RPC get_spy_report", error);
-        throw error;
-      }
-
+      if (error) throw error;
       if (!data) return null; 
       
       return { ...data, status: data.game_status };
@@ -155,7 +167,6 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  // --- LECTURE PUBLIQUE VIA RPC ---
   const getPublicInvitation = async (id) => {
     try {
       const { data, error } = await supabase.rpc('get_public_invitation', {
@@ -163,12 +174,12 @@ export const AppProvider = ({ children }) => {
       });
 
       if (error) {
-        console.error("Erreur RPC get_public_invitation", error);
+        // Ignorer les erreurs "introuvable" standard pour éviter le spam console
+        if (error.code !== 'PGRST116') console.error("Erreur RPC get_public_invitation", error);
         return null;
       }
 
       if (!data) return null;
-
       return { ...data, status: data.game_status };
     } catch (error) {
       console.error("Erreur critique getPublicInvitation", error);
@@ -187,18 +198,12 @@ export const AppProvider = ({ children }) => {
 
   const incrementAttempts = async (id, newCount, newTime) => {
     try {
-      if (!id || newCount === undefined || newTime === undefined) {
-        console.warn("incrementAttempts paramètres invalides", { id, newCount, newTime });
-        return;
-      }
-      
-      const { error } = await supabase.rpc('increment_attempts', { 
+      if (!id) return;
+      await supabase.rpc('increment_attempts', { 
         target_id: id, 
-        new_count: parseInt(newCount), 
-        new_time: parseFloat(newTime) 
+        new_count: parseInt(newCount || 0), 
+        new_time: parseFloat(newTime || 0) 
       });
-
-      if (error) console.error("Erreur incrementAttempts", error);
     } catch (e) {
       console.warn("incrementAttempts silent error", e);
     }
@@ -206,19 +211,25 @@ export const AppProvider = ({ children }) => {
 
   const acceptInvitation = async (id) => {
     try {
+      // 1. Sauvegarde locale immédiate (Offline-First)
       localStorage.setItem('pending_acceptance', JSON.stringify({ id, time: Date.now() }));
       
-      // Tentative avec keepalive pour meilleure fiabilité mobile
+      // 2. Tentative via Beacon (plus fiable lors de la fermeture de page)
       if (navigator.sendBeacon) {
         const url = `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/rpc/answer_invitation`;
-        const response = await fetch(url, {
-          method: 'POST',
-          headers: {
+        const payload = JSON.stringify({ target_id: id, answer: 'accepted' });
+        const headers = {
             'Content-Type': 'application/json',
             'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
             'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
-          },
-          body: JSON.stringify({ target_id: id, answer: 'accepted' }),
+        };
+        
+        // Beacon ne supporte pas les headers auth custom facilement sur tous les navigateurs
+        // On fallback sur fetch keepalive
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: headers,
+          body: payload,
           keepalive: true
         });
         
@@ -228,7 +239,7 @@ export const AppProvider = ({ children }) => {
         }
       }
 
-      // Fallback standard
+      // 3. Fallback standard RPC
       const { error } = await supabase.rpc('answer_invitation', { 
         target_id: id, 
         answer: 'accepted' 
@@ -240,15 +251,14 @@ export const AppProvider = ({ children }) => {
       return true;
 
     } catch (error) {
-      console.warn("Erreur réseau acceptInvitation", error);
-      return false;
+      console.warn("Erreur réseau acceptInvitation - Sauvegardé pour retry", error);
+      return false; // Ce n'est pas grave, le useEffect s'en chargera
     }
   };
 
   const verifyPaymentStatus = async (id) => {
     try {
       const data = await getPublicInvitation(id);
-      // Le RPC get_public_invitation renvoie payment_status
       return !!data && data.payment_status === 'paid';
     } catch (error) {
       console.error("Erreur verifyPaymentStatus", error);
@@ -266,6 +276,8 @@ export const AppProvider = ({ children }) => {
     verifyPaymentStatus,
     ownedInvitations,
     getOwnedInvitations,
+    updateOwnedInvitations, // Exporté pour usage dans Home.jsx
+    recoverBySessionId
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

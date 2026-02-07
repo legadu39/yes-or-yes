@@ -1,17 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 
-// --- UTILITAIRE DE GÉNÉRATION D'ID (Sans dépendance externe) ---
-const generateUUID = () => {
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-    return crypto.randomUUID();
-  }
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-    var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
-    return v.toString(16);
-  });
-};
-
 const AppContext = createContext();
 
 export const useApp = () => useContext(AppContext);
@@ -59,7 +48,7 @@ export const AppProvider = ({ children }) => {
     }
   }, []);
 
-  // --- CRÉATION AVEC GESTION D'ERREUR ROBUSTE ---
+  // --- CRÉATION VIA RPC V2 (SÉCURITÉ & RESPONSABILITÉ DB) ---
   const createInvitation = async (sender, valentine, plan) => {
     try {
       // Validation des entrées
@@ -67,53 +56,47 @@ export const AppProvider = ({ children }) => {
         throw new Error("Paramètres invalides");
       }
 
-      // Génération des IDs
-      const newId = generateUUID();
-      const newToken = generateUUID();
+      console.log("Appel RPC create_invitation_v2", { sender, valentine, plan });
 
-      console.log("Tentative création invitation", { id: newId.substring(0, 8), sender, valentine, plan });
+      // APPEL RPC : On laisse la DB gérer les IDs et Tokens
+      // La fonction create_invitation_v2 doit retourner un JSON ou un record avec { id, admin_token }
+      const { data, error } = await supabase.rpc('create_invitation_v2', {
+        p_sender: sender.trim(),
+        p_valentine: valentine.trim(),
+        p_plan: plan
+      });
 
-      // CORRECTION 1 : Sélection explicite des colonnes nécessaires
-      const { data, error } = await supabase
-        .from('invitations')
-        .insert({
-          id: newId,
-          sender: sender.trim(),
-          valentine: valentine.trim(),
-          plan: plan,
-          admin_token: newToken,
-          game_status: 'pending',
-          payment_status: 'unpaid'
-        })
-        .select('id, admin_token') // Sélection explicite uniquement des colonnes retournées
-        .single();
-
-      // CORRECTION 2 : Logging détaillé en cas d'erreur
+      // Gestion d'erreur détaillée
       if (error) {
-        console.error("❌ Erreur Supabase détaillée:", {
+        console.error("❌ Erreur RPC create_invitation_v2:", {
           message: error.message,
-          details: error.details,
-          hint: error.hint,
-          code: error.code
+          code: error.code,
+          details: error.details
         });
         
-        // Messages d'erreur spécifiques
-        if (error.code === '42501') throw new Error("Permission refusée. Vérifiez les politiques RLS.");
-        if (error.code === '23505') throw new Error("ID en conflit. Réessayez.");
-        if (error.message?.includes('columns')) throw new Error("Erreur de structure de table. Contactez le support.");
-        
+        if (error.code === '42501') throw new Error("Permission refusée par la base de données.");
         throw error;
       }
 
-      // CORRECTION 3 : Validation du retour
+      // Validation du retour
       if (!data) {
-        console.error("⚠️ Pas de données retournées par Supabase (mais pas d'erreur levée).");
-        throw new Error("La création a échoué silencieusement");
+        console.error("⚠️ Pas de données retournées par le RPC.");
+        throw new Error("Erreur technique: Pas de retour de la base de données.");
       }
 
-      console.log("✅ Invitation créée avec succès", data);
+      // Extraction des données retournées par la fonction SQL
+      // On gère les deux cas possibles de retour (camelCase ou snake_case selon ta fonction SQL)
+      const newId = data.id || data.new_id;
+      const newToken = data.admin_token || data.new_token || data.token;
 
-      // Mise à jour du store local
+      if (!newId || !newToken) {
+         console.error("⚠️ Structure de retour inattendue:", data);
+         throw new Error("Erreur technique: Données incomplètes.");
+      }
+
+      console.log("✅ Invitation créée avec succès (DB)", newId);
+
+      // Mise à jour du store local avec les données certifiées par la DB
       const newInvitation = { 
         id: newId, 
         sender: sender.trim(),
@@ -128,33 +111,32 @@ export const AppProvider = ({ children }) => {
       setOwnedInvitations(updatedList);
       localStorage.setItem('yesoryes_owned', JSON.stringify(updatedList));
 
-      // CORRECTION 4 : Retour garanti avec les bonnes valeurs
+      // Retour garanti avec les bonnes valeurs pour la redirection
       return { id: newId, token: newToken };
 
     } catch (error) {
       console.error("🚨 Erreur critique création:", {
         name: error.name,
-        message: error.message,
-        stack: error.stack
+        message: error.message
       });
-      // CORRECTION 5 : Retour null au lieu de throw pour permettre à l'UI de gérer
       return null;
     }
   };
 
+  // --- LECTURE RAPPORT ESPION VIA RPC ---
   const getSpyReport = async (id, token) => {
     try {
-      const { data, error } = await supabase
-        .from('invitations')
-        .select('*')
-        .eq('id', id)
-        .eq('admin_token', token)
-        .single();
+      const { data, error } = await supabase.rpc('get_spy_report', {
+        target_id: id,
+        token_input: token
+      });
 
       if (error) {
-        console.error("Erreur getSpyReport", error);
+        console.error("Erreur RPC get_spy_report", error);
         throw error;
       }
+
+      if (!data) return null; 
       
       return { ...data, status: data.game_status };
     } catch (error) {
@@ -173,27 +155,26 @@ export const AppProvider = ({ children }) => {
     }
   };
 
+  // --- LECTURE PUBLIQUE VIA RPC ---
   const getPublicInvitation = async (id) => {
-  try {
-    const { data, error } = await supabase
-      .from('invitations')
-      .select('id, sender, valentine, plan, game_status, payment_status, attempts, viewed_at')
-      .eq('id', id)
-      .single();
+    try {
+      const { data, error } = await supabase.rpc('get_public_invitation', {
+        target_id: id
+      });
 
-    if (error) {
-      console.error("Erreur getPublicInvitation", error);
+      if (error) {
+        console.error("Erreur RPC get_public_invitation", error);
+        return null;
+      }
+
+      if (!data) return null;
+
+      return { ...data, status: data.game_status };
+    } catch (error) {
+      console.error("Erreur critique getPublicInvitation", error);
       return null;
     }
-
-    // ✅ CORRECTION : On retourne l'invitation même si non payée
-    // La vérification du paiement se fera ailleurs si nécessaire
-    return { ...data, status: data.game_status };
-  } catch (error) {
-    console.error("Erreur getPublicInvitation", error);
-    return null;
-  }
-};
+  };
 
   const markAsViewed = async (id) => {
     try {
@@ -227,7 +208,7 @@ export const AppProvider = ({ children }) => {
     try {
       localStorage.setItem('pending_acceptance', JSON.stringify({ id, time: Date.now() }));
       
-      // Tentative avec keepalive
+      // Tentative avec keepalive pour meilleure fiabilité mobile
       if (navigator.sendBeacon) {
         const url = `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/rpc/answer_invitation`;
         const response = await fetch(url, {
@@ -247,7 +228,7 @@ export const AppProvider = ({ children }) => {
         }
       }
 
-      // Fallback
+      // Fallback standard
       const { error } = await supabase.rpc('answer_invitation', { 
         target_id: id, 
         answer: 'accepted' 
@@ -267,25 +248,10 @@ export const AppProvider = ({ children }) => {
   const verifyPaymentStatus = async (id) => {
     try {
       const data = await getPublicInvitation(id);
-      return !!data;
+      // Le RPC get_public_invitation renvoie payment_status
+      return !!data && data.payment_status === 'paid';
     } catch (error) {
       console.error("Erreur verifyPaymentStatus", error);
-      return false;
-    }
-  };
-
-  // --- NOUVELLE FONCTION CRITIQUE : Validation du paiement via Token ---
-  const confirmPayment = async (id, token) => {
-    try {
-      const { data, error } = await supabase.rpc('confirm_payment_with_token', {
-        target_id: id,
-        token_input: token
-      });
-      
-      if (error) throw error;
-      return data; // Retourne true si succès
-    } catch (error) {
-      console.error('Erreur confirmPayment', error);
       return false;
     }
   };
@@ -300,7 +266,6 @@ export const AppProvider = ({ children }) => {
     verifyPaymentStatus,
     ownedInvitations,
     getOwnedInvitations,
-    confirmPayment, // Export de la nouvelle fonction
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

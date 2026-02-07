@@ -16,8 +16,8 @@ const FAKE_NOTIFICATIONS = [
 ];
 
 const STRIPE_LINKS = {
-  basic: "https://buy.stripe.com/cN2i6oG0to3T51yKcg?36Vq01", 
-  spy: "https://buy.stripe.com/8wM28wOcc6gFRfpAdk?76Vq02"
+  basic: "https://buy.stripe.com/cNi6oG0to3T51yKcg36Vq01", 
+  spy: "https://buy.stripe.com/8x28wOcc6gFRfpAdk76Vq02"
 };
 
 const Home = () => {

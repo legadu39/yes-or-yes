@@ -1,99 +1,136 @@
+// ============================================================================
+// WEBHOOK STRIPE - VERSION CORRIGÉE POUR VERCEL
+// Fichier : api/webhook.js
+// ============================================================================
+
 import { createClient } from '@supabase/supabase-js';
 import Stripe from 'stripe';
-import { buffer } from 'micro';
 
-// --- CONFIGURATION VERCEL ---
+// ⚠️ CRITIQUE : Vercel nécessite cette configuration pour les webhooks
 export const config = {
   api: {
-    bodyParser: false,
+    bodyParser: false, // Désactive le parsing pour vérifier la signature Stripe
   },
 };
 
-// Initialisation sécurisée des clients
+// Client Supabase Admin avec Service Role (contourne RLS)
+const supabaseAdmin = createClient(
+  process.env.VITE_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY // ⚠️ Variable d'environnement OBLIGATOIRE
+);
+
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
+// ============================================================================
+// FONCTION UTILITAIRE : Lire le body brut (requis par Stripe)
+// ============================================================================
+async function getRawBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    req.on('data', (chunk) => chunks.push(chunk));
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+}
+
+// ============================================================================
+// HANDLER PRINCIPAL
+// ============================================================================
 export default async function handler(req, res) {
+  // 1. Vérification méthode HTTP
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
-    return res.status(405).send('Method Not Allowed');
+    return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  // Vérification critique des variables d'environnement avant traitement
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-
-  if (!supabaseUrl || !supabaseServiceKey || !webhookSecret) {
-    console.error("❌ Erreur Configuration : Variables d'environnement manquantes côté serveur.");
-    return res.status(500).json({ error: "Server configuration error" });
-  }
-
-  const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
   let event;
 
   try {
-    const buf = await buffer(req);
-    const sig = req.headers['stripe-signature'];
-    event = stripe.webhooks.constructEvent(buf, sig, webhookSecret);
+    // 2. Lecture du body brut
+    const rawBody = await getRawBody(req);
+    const signature = req.headers['stripe-signature'];
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+    if (!webhookSecret) {
+      console.error('❌ STRIPE_WEBHOOK_SECRET manquant');
+      return res.status(500).json({ error: 'Configuration serveur incorrecte' });
+    }
+
+    // 3. Vérification cryptographique de la signature Stripe
+    event = stripe.webhooks.constructEvent(rawBody, signature, webhookSecret);
+    console.log('✅ Webhook Stripe vérifié:', event.type);
+
   } catch (err) {
-    console.error(`⚠️ Webhook Signature Error: ${err.message}`);
-    return res.status(400).send(`Webhook Error: ${err.message}`);
+    console.error('❌ Erreur vérification signature:', err.message);
+    return res.status(400).json({ error: `Webhook Error: ${err.message}` });
   }
 
+  // 4. Traitement de l'événement checkout.session.completed
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object;
     
-    // Récupération multi-sources de l'ID pour parer aux variations de l'API Stripe
-    const invitationId = session.client_reference_id || 
-                         session.metadata?.invitationId || 
-                         session.metadata?.id;
+    // 🔧 FIX : Récupération de l'ID depuis client_reference_id ET metadata
+    const invitationId = session.client_reference_id || session.metadata?.invitationId;
 
     if (!invitationId) {
-        console.error('❌ Erreur: Aucun ID d\'invitation trouvé dans la session Stripe:', session.id);
-        return res.status(200).json({ received: true, warning: "Missing reference ID" });
+      console.error('❌ Aucun invitationId trouvé dans la session Stripe:', session.id);
+      return res.status(200).json({ received: true, warning: 'No invitation ID' });
     }
 
-    console.log(`💰 Traitement paiement pour l'invitation: ${invitationId}`);
+    console.log(`💰 Paiement reçu pour invitation: ${invitationId}`);
 
     try {
-        // Vérification d'idempotence
-        const { data: current, error: fetchError } = await supabaseAdmin
-            .from('invitations')
-            .select('payment_status')
-            .eq('id', invitationId)
-            .single();
+      // 5. Vérification d'idempotence (éviter les doublons)
+      const { data: current, error: fetchError } = await supabaseAdmin
+        .from('invitations')
+        .select('payment_status, id')
+        .eq('id', invitationId)
+        .single();
 
-        if (fetchError) {
-          console.error('❌ Erreur lors de la vérification Supabase:', fetchError);
-          return res.status(500).json({ error: 'Database fetch failed' });
-        }
+      if (fetchError) {
+        console.error('❌ Erreur lecture Supabase:', fetchError);
+        return res.status(500).json({ error: 'Database read failed' });
+      }
 
-        if (current && current.payment_status === 'paid') {
-             console.log('ℹ️ Invitation déjà marquée comme payée.');
-             return res.json({ received: true });
-        }
+      if (!current) {
+        console.error('❌ Invitation introuvable:', invitationId);
+        return res.status(404).json({ error: 'Invitation not found' });
+      }
 
-        // Mise à jour atomique du statut
-        const { error: updateError } = await supabaseAdmin
-          .from('invitations')
-          .update({ 
-            payment_status: 'paid', 
-            stripe_session_id: session.id,
-          })
-          .eq('id', invitationId);
+      if (current.payment_status === 'paid') {
+        console.log('ℹ️ Déjà traité (idempotence)');
+        return res.status(200).json({ received: true, status: 'already_paid' });
+      }
 
-        if (updateError) {
-          console.error('❌ Erreur lors de la mise à jour Supabase:', updateError);
-          return res.status(500).json({ error: 'Database update failed' });
-        }
-        
-        console.log('✅ Statut de paiement mis à jour avec succès (PAID).');
+      // 6. 🔧 MISE À JOUR CRITIQUE : Passer payment_status à 'paid'
+      const { error: updateError } = await supabaseAdmin
+        .from('invitations')
+        .update({ 
+          payment_status: 'paid',
+          stripe_session_id: session.id
+        })
+        .eq('id', invitationId);
+
+      if (updateError) {
+        console.error('❌ Erreur mise à jour Supabase:', {
+          code: updateError.code,
+          message: updateError.message,
+          details: updateError.details,
+          hint: updateError.hint
+        });
+        return res.status(500).json({ error: 'Database update failed', details: updateError.message });
+      }
+
+      console.log(`✅ Invitation ${invitationId} marquée comme PAID`);
+      return res.status(200).json({ received: true, status: 'updated' });
 
     } catch (err) {
-        console.error('❌ Exception serveur lors du traitement webhook:', err);
-        return res.status(500).send('Internal Server Error');
+      console.error('❌ Exception serveur:', err);
+      return res.status(500).json({ error: 'Internal Server Error' });
     }
   }
 
-  res.json({ received: true });
+  // 7. Autres événements Stripe (ignorés mais loggés)
+  console.log(`ℹ️ Événement Stripe ignoré: ${event.type}`);
+  return res.status(200).json({ received: true });
 }

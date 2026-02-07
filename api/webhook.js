@@ -15,20 +15,17 @@ export const config = {
 
 // --- INITIALISATION SÉCURISÉE DES VARIABLES D'ENVIRONNEMENT ---
 // Vercel Backend ne voit pas toujours les variables VITE_ par défaut.
-// On assure une compatibilité double.
+// On assure une compatibilité double pour éviter le crash.
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
 const STRIPE_SECRET = process.env.STRIPE_SECRET_KEY;
 const WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
 
-if (!SUPABASE_URL || !SUPABASE_KEY) {
-  console.error("❌ CRITICAL ERROR: Variables d'environnement Supabase manquantes.");
-  // On ne lance pas d'erreur ici pour éviter de crasher tout le module, 
-  // mais les appels échoueront proprement.
-}
-
 // Client Supabase Admin avec Service Role (contourne RLS pour l'update)
-const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_KEY);
+// On initialise seulement si les clés sont présentes pour éviter un crash immédiat au chargement du module
+const supabaseAdmin = (SUPABASE_URL && SUPABASE_KEY) 
+  ? createClient(SUPABASE_URL, SUPABASE_KEY) 
+  : null;
 
 const stripe = new Stripe(STRIPE_SECRET);
 
@@ -54,17 +51,23 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
+  // Vérification de sécurité critique au démarrage de la requête
+  if (!supabaseAdmin) {
+    console.error("🚨 CRASH: Supabase URL ou Key manquante. Vérifiez les variables d'environnement (SUPABASE_URL / SERVICE_ROLE).");
+    return res.status(500).json({ error: 'Server Configuration Error' });
+  }
+
+  if (!WEBHOOK_SECRET) {
+    console.error('❌ STRIPE_WEBHOOK_SECRET manquant côté serveur');
+    return res.status(500).json({ error: 'Server Configuration Error' });
+  }
+
   let event;
 
   try {
     // 2. Lecture du body brut
     const rawBody = await getRawBody(req);
     const signature = req.headers['stripe-signature'];
-
-    if (!WEBHOOK_SECRET) {
-      console.error('❌ STRIPE_WEBHOOK_SECRET manquant côté serveur');
-      return res.status(500).json({ error: 'Server Configuration Error' });
-    }
 
     // 3. Vérification cryptographique de la signature Stripe
     event = stripe.webhooks.constructEvent(rawBody, signature, WEBHOOK_SECRET);
@@ -121,7 +124,7 @@ export default async function handler(req, res) {
         .from('invitations')
         .update({ 
           payment_status: 'paid',
-          stripe_session_id: session.id, // Important pour la récupération par session_id
+          stripe_session_id: session.id, // Important pour la récupération par session_id future
           updated_at: new Date().toISOString()
         })
         .eq('id', invitationId);

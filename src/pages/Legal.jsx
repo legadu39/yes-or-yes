@@ -14,11 +14,12 @@ const Legal = () => {
               <h3 className="text-xl text-rose-gold mb-2">1. Éditeur du site</h3>
               <p>
                 Le site <strong>YesOrYes</strong> est édité par :<br/>
-                [VOTRE NOM OU NOM DE SOCIÉTÉ]<br/>
-                [VOTRE ADRESSE POSTALE COMPLÈTE]<br/>
-                SIRET : [VOTRE NUMÉRO SIRET]<br/>
-                Directeur de la publication : [VOTRE NOM]<br/>
-                Contact : [VOTRE EMAIL DE SUPPORT]
+                <strong>Mathieu Fredianelli</strong><br/>
+                Entrepreneur Individuel<br/>
+                Domicilié à : 13009 Marseille, France<br/>
+                SIRET : <strong>En cours d'immatriculation</strong><br/>
+                Directeur de la publication : Mathieu Fredianelli<br/>
+                Contact : <strong>contact.yesoryes@proton.me</strong>
               </p>
             </section>
             <section>
@@ -38,11 +39,11 @@ const Legal = () => {
           <div className="space-y-6">
             <section>
               <h3 className="text-xl text-rose-gold mb-2">1. Objet</h3>
-              <p>Les présentes CGV régissent la vente des services numériques "YesOrYes" (création d'invitations interactives).</p>
+              <p>Les présentes CGV régissent la vente des services numériques "YesOrYes" (création d'invitations interactives) par Mathieu Fredianelli, Entrepreneur Individuel.</p>
             </section>
             <section>
               <h3 className="text-xl text-rose-gold mb-2">2. Prix et Paiement</h3>
-              <p>Les prix sont indiqués en euros TTC. Le paiement est exigible immédiatement à la commande via la plateforme sécurisée Stripe.</p>
+              <p>Les prix sont indiqués en euros TTC (TVA non applicable, art. 293 B du CGI). Le paiement est exigible immédiatement à la commande via la plateforme sécurisée Stripe.</p>
             </section>
             <section>
               <h3 className="text-xl text-rose-gold mb-2">3. Livraison</h3>
@@ -68,17 +69,17 @@ const Legal = () => {
               <p>Nous collectons uniquement les données strictement nécessaires au fonctionnement du service :</p>
               <ul className="list-disc pl-5 mt-2 space-y-1 opacity-80">
                   <li>Prénoms (expéditeur et destinataire) pour la personnalisation.</li>
-                  <li>Données techniques de connexion (adresse IP, User Agent) à des fins de sécurité et de statistiques anonymes.</li>
-                  <li>Données de paiement (gérées intégralement par Stripe, nous n'avons jamais accès à vos numéros de carte).</li>
+                  <li>Données techniques de connexion (adresse IP, User Agent) à des fins de sécurité.</li>
+                  <li>Données de paiement (gérées intégralement par Stripe).</li>
               </ul>
             </section>
             <section>
               <h3 className="text-xl text-rose-gold mb-2">2. Cookies</h3>
-              <p>Nous utilisons uniquement des cookies techniques essentiels au fonctionnement de l'application (maintien de session, sécurité). Aucun cookie publicitaire tiers n'est utilisé.</p>
+              <p>Nous utilisons uniquement des cookies techniques essentiels au fonctionnement de l'application.</p>
             </section>
             <section>
                 <h3 className="text-xl text-rose-gold mb-2">3. Durée de conservation</h3>
-                <p>Les invitations et les données associées sont conservées pour une durée déterminée (ex: 1 an) avant suppression automatique, sauf demande explicite de suppression de votre part.</p>
+                <p>Les invitations et les données associées sont conservées pour une durée de 1 an avant suppression automatique.</p>
             </section>
           </div>
         );
@@ -87,7 +88,7 @@ const Legal = () => {
         return (
             <div className="text-center py-10">
                 <p className="text-xl text-rose-gold">Page non trouvée.</p>
-                <p className="text-sm opacity-60 mt-2">L'URL demandée n'existe pas.</p>
+                <Link to="/" className="text-sm opacity-60 mt-2 hover:underline">Retour à l'accueil</Link>
             </div>
         );
     }

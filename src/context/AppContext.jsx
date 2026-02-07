@@ -1,17 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 
-// --- UTILITAIRE DE GÉNÉRATION D'ID (Sans dépendance externe) ---
-const generateUUID = () => {
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-    return crypto.randomUUID();
-  }
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-    var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
-    return v.toString(16);
-  });
-};
-
 const AppContext = createContext();
 
 export const useApp = () => useContext(AppContext);
@@ -20,7 +9,6 @@ export const AppProvider = ({ children }) => {
   const [ownedInvitations, setOwnedInvitations] = useState([]);
 
   useEffect(() => {
-    // Récupération de l'historique propriétaire
     const stored = localStorage.getItem('yesoryes_owned');
     if (stored) {
       try {
@@ -31,12 +19,11 @@ export const AppProvider = ({ children }) => {
       }
     }
 
-    // Queue de Synchronisation
     const syncPendingActions = async () => {
       const pending = localStorage.getItem('pending_acceptance');
       if (pending) {
         try {
-          const { id, time } = JSON.parse(pending);
+          const { id } = JSON.parse(pending);
           console.log(`🔄 Tentative de synchronisation pour ${id}...`);
           
           const { error } = await supabase.rpc('answer_invitation', {
@@ -59,78 +46,59 @@ export const AppProvider = ({ children }) => {
     }
   }, []);
 
-  // --- CRÉATION AVEC GESTION D'ERREUR ROBUSTE ---
+  // 🔥 SOLUTION DÉFINITIVE : Utiliser la RPC create_invitation_v2
   const createInvitation = async (sender, valentine, plan) => {
     try {
-      // Validation des entrées
       if (!sender?.trim() || !valentine?.trim() || !plan) {
         throw new Error("Paramètres invalides");
       }
 
-      // Génération des IDs
-      const newId = generateUUID();
-      const newToken = generateUUID();
-
-      console.log('🔧 Tentative création invitation:', { 
-        id: newId.substring(0, 8), 
+      console.log('🔧 Tentative création invitation via RPC:', { 
         sender: sender.trim(), 
         valentine: valentine.trim(), 
         plan 
       });
 
-      // 🔧 CORRECTION 1 : Sélection explicite des colonnes nécessaires
-      const { data, error } = await supabase
-        .from('invitations')
-        .insert([
-          {
-            id: newId,
-            sender: sender.trim(),
-            valentine: valentine.trim(),
-            plan: plan,
-            admin_token: newToken,
-            game_status: 'pending',
-            payment_status: 'unpaid'
-          }
-        ])
-        .select('id, admin_token')  // ✅ Sélection explicite uniquement des colonnes retournées
-        .single();
+      // ✅ UTILISATION DE LA RPC AU LIEU D'INSERT DIRECT
+      const { data, error } = await supabase.rpc('create_invitation_v2', {
+        p_sender: sender.trim(),
+        p_valentine: valentine.trim(),
+        p_plan: plan
+      });
 
-      // 🔧 CORRECTION 2 : Logging détaillé en cas d'erreur
       if (error) {
-        console.error("❌ Erreur Supabase détaillée:", {
+        console.error("❌ Erreur RPC create_invitation_v2:", {
           message: error.message,
           details: error.details,
           hint: error.hint,
           code: error.code
         });
         
-        // Messages d'erreur spécifiques
-        if (error.code === '42501') {
-          throw new Error("Permission refusée. Vérifiez les politiques RLS.");
+        if (error.code === '42883') {
+          throw new Error("La fonction RPC n'existe pas. Vérifiez que create_invitation_v2 est bien créée dans Supabase.");
         }
-        if (error.code === '23505') {
-          throw new Error("ID en conflit. Réessayez.");
-        }
-        if (error.message?.includes('columns')) {
-          throw new Error("Erreur de structure de table. Contactez le support.");
+        if (error.message?.includes('permission')) {
+          throw new Error("Permission refusée pour la fonction RPC.");
         }
         
-        throw error;
+        throw new Error(error.message || "Erreur lors de la création");
       }
 
-      // 🔧 CORRECTION 3 : Validation du retour
-      if (!data) {
-        console.error("❌ Pas de données retournées par Supabase");
-        throw new Error("La création a échoué silencieusement");
+      if (!data || !data.id || !data.token) {
+        console.error("❌ Données incomplètes retournées par RPC:", data);
+        throw new Error("La création a échoué (données manquantes)");
       }
 
-      console.log('✅ Invitation créée avec succès:', data);
+      console.log('✅ Invitation créée avec succès via RPC:', {
+        id: data.id.substring(0, 8),
+        hasToken: !!data.token
+      });
 
       // Mise à jour du store local
       const newInvitation = {
-        id: newId,
+        id: data.id,
         valentine: valentine.trim(),
-        token: newToken,
+        token: data.token,
         createdAt: new Date().toISOString()
       };
 
@@ -140,39 +108,35 @@ export const AppProvider = ({ children }) => {
       setOwnedInvitations(updatedList);
       localStorage.setItem('yesoryes_owned', JSON.stringify(updatedList));
 
-      // 🔧 CORRECTION 4 : Retour garanti avec les bonnes valeurs
-      return { id: newId, token: newToken };
+      return { 
+        id: data.id, 
+        token: data.token 
+      };
 
     } catch (error) {
       console.error("💥 Erreur critique création:", {
         name: error.name,
-        message: error.message,
-        stack: error.stack
+        message: error.message
       });
       
-      // 🔧 CORRECTION 5 : Retour null au lieu de throw pour permettre l'UI de gérer
       return null;
     }
   };
 
   const getSpyReport = async (id, token) => {
     try {
-      const { data, error } = await supabase
-        .from('invitations')
-        .select('*')
-        .eq('id', id)
-        .eq('admin_token', token)
-        .single();
+      // ✅ Utilisation de la RPC get_spy_report
+      const { data, error } = await supabase.rpc('get_spy_report', {
+        target_id: id,
+        token_input: token
+      });
 
       if (error) {
-        console.error("Erreur getSpyReport:", error);
-        throw error;
+        console.error("Erreur RPC get_spy_report:", error);
+        return null;
       }
 
-      return {
-        ...data,
-        status: data.game_status
-      };
+      return data;
     } catch (error) {
       console.error("Accès refusé ou erreur rapport espion:", error);
       return null;
@@ -202,7 +166,6 @@ export const AppProvider = ({ children }) => {
         return null;
       }
 
-      // Vérification paiement
       if (data.payment_status !== 'paid') {
         console.warn("Invitation trouvée mais non payée");
         return null;
@@ -253,7 +216,6 @@ export const AppProvider = ({ children }) => {
         time: Date.now()
       }));
 
-      // Tentative avec keepalive
       if (navigator.sendBeacon) {
         const url = `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/rpc/answer_invitation`;
         
@@ -277,7 +239,6 @@ export const AppProvider = ({ children }) => {
         }
       }
 
-      // Fallback
       const { error } = await supabase.rpc('answer_invitation', {
         target_id: id,
         answer: 'accepted'

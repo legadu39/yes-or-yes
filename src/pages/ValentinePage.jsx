@@ -54,6 +54,8 @@ const ValentinePage = () => {
         loadAudio(0);
     }
 
+    let pollingInterval; // Variable pour stocker l'intervalle de vérification
+
     const fetchInvite = async () => {
       setLoading(true);
       const data = await getPublicInvitation(id);
@@ -61,10 +63,25 @@ const ValentinePage = () => {
       if (!data) { 
         navigate('/'); 
       } else {
-        // GESTION INTELLIGENTE DE L'ÉTAT DE PAIEMENT
+        // GESTION INTELLIGENTE DE L'ÉTAT DE PAIEMENT & POLLING
         if (data.payment_status !== 'paid') {
+            // Cas 1: Paiement en attente -> On affiche l'écran d'attente
             setInvitation({ ...data, isPending: true });
+
+            // MISE À JOUR CRITIQUE : Démarrage du Polling (Vérification toutes les 3s)
+            // Cela permet de débloquer l'écran automatiquement dès que Stripe valide
+            pollingInterval = setInterval(async () => {
+                const check = await getPublicInvitation(id);
+                // Si le statut passe à 'paid', on met à jour et on arrête de chercher
+                if (check && check.payment_status === 'paid') {
+                    setInvitation(check); // L'écran se débloque réactivement
+                    clearInterval(pollingInterval);
+                    if (!isLikelyBot()) markAsViewed(id); // On marque vu à ce moment précis
+                }
+            }, 3000);
+
         } else {
+            // Cas 2: Déjà payé -> Accès direct
             setInvitation(data);
             startTimeRef.current = Date.now();
             if (!isLikelyBot()) markAsViewed(id);
@@ -75,11 +92,13 @@ const ValentinePage = () => {
 
     fetchInvite();
     
+    // Nettoyage complet (Audio + Polling)
     return () => { 
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current = null;
       }
+      if (pollingInterval) clearInterval(pollingInterval);
     };
   }, [id, getPublicInvitation, markAsViewed, navigate]);
 

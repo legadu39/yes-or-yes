@@ -75,7 +75,7 @@ const Legal = () => {
             </section>
             <section>
               <h3 className="text-xl text-rose-gold mb-2">2. Cookies</h3>
-              <p>Nous utilisons uniquement des cookies techniques essentiels au fonctionnement de l'application.</p>
+              <p>Nous utilisons uniquement des cookies techniques essentiels au fonctionnement de l'application (maintien de session, sécurité). Aucun cookie publicitaire tiers n'est utilisé.</p>
             </section>
             <section>
                 <h3 className="text-xl text-rose-gold mb-2">3. Durée de conservation</h3>

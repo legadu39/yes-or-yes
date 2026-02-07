@@ -165,7 +165,6 @@ const Home = () => {
 
     const poll = async () => {
         attempts++;
-        // NOTE : verifyPaymentStatus vérifie maintenant que le payment_status est 'paid'
         const isPaid = await verifyPaymentStatus(paymentId);
         
         if (isPaid) {
@@ -206,7 +205,6 @@ const Home = () => {
     
     setGeneratedLinks({
         valentine: `${window.location.origin}/v/${invite.id}`,
-        // Avec la nouvelle sécurité, le lien Spy nécessite obligatoirement un token
         spy: (invite.plan === 'spy' || !invite.plan) ? `${window.location.origin}/spy/${invite.id}?token=${token}` : null,
     });
     setStatus('success');
@@ -261,7 +259,6 @@ const Home = () => {
 
       setStatus('paying');
       
-      // INTELLIGENCE : SÉCURISATION DU RETOUR
       const statePayload = btoa(JSON.stringify({ 
           t: token, 
           id: id,
@@ -412,7 +409,6 @@ const Home = () => {
     );
   }
 
-  // --- VUE : FORMULAIRE ---
   return (
     <div className="min-h-screen p-4 flex flex-col items-center justify-center relative overflow-x-hidden pt-16">
       
@@ -543,7 +539,6 @@ const Home = () => {
             </div>
           </div>
           
-          {/* Alerte de sécurité pour le token */}
           <div className="bg-orange-500/10 border border-orange-500/30 p-4 rounded-lg flex items-start gap-3">
              <AlertTriangle className="text-orange-400 shrink-0 mt-0.5" size={18} />
              <p className="text-xs text-orange-200/80 leading-relaxed">

@@ -7,7 +7,7 @@ import confetti from 'canvas-confetti';
 const ValentinePage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { getPublicInvitation, incrementAttempts, acceptInvitation } = useApp();
+  const { getPublicInvitation, incrementAttempts, acceptInvitation, markAsViewed } = useApp();
   
   const [invitation, setInvitation] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -18,13 +18,21 @@ const ValentinePage = () => {
   const [hasInteracted, setHasInteracted] = useState(false);
   
   // INTELLIGENCE N°4 : ANTI-FRUSTRATION
-  // Détection de la rage de l'utilisateur (clics dans le vide)
   const [missClickCount, setMissClickCount] = useState(0);
 
   const audioRef = useRef(null); 
   const startTimeRef = useRef(Date.now()); 
   const btnRef = useRef(null); 
   const lastMousePos = useRef({ x: 0, y: 0 });
+
+  // INTELLIGENCE : DÉTECTION DE ROBOTS
+  const isLikelyBot = () => {
+    const agent = navigator.userAgent.toLowerCase();
+    if (agent.includes('bot') || agent.includes('crawl') || agent.includes('facebook') || agent.includes('whatsapp') || agent.includes('google')) {
+        return true;
+    }
+    return false;
+  };
 
   useEffect(() => {
     // INTELLIGENCE : CIRCUIT BREAKER AUDIO
@@ -56,10 +64,19 @@ const ValentinePage = () => {
       const data = await getPublicInvitation(id);
       
       if (!data) { 
+        // Si pas de données (ex: non payé ou ID invalide), on redirige
         navigate('/'); 
       } else {
         setInvitation(data);
         startTimeRef.current = Date.now();
+        
+        // INTELLIGENCE : Marquer comme "Vu" pour le Dashboard Espion
+        // Uniquement si ce n'est pas un robot
+        if (!isLikelyBot()) {
+            markAsViewed(id);
+        } else {
+            console.log("🤖 Visite de robot détectée - Statistiques ignorées.");
+        }
       }
       setLoading(false);
     };
@@ -72,7 +89,7 @@ const ValentinePage = () => {
         audioRef.current = null;
       }
     };
-  }, [id, getPublicInvitation, navigate]);
+  }, [id, getPublicInvitation, markAsViewed, navigate]);
 
   const handleStartExperience = () => {
     if (audioRef.current) {
@@ -97,11 +114,8 @@ const ValentinePage = () => {
     }
   };
 
-  // Gestion des clics ratés (l'utilisateur tape l'écran de rage)
   const handleBackgroundClick = (e) => {
-     // On ignore les clics sur les boutons eux-mêmes
      if (e.target.tagName === 'BUTTON' || e.target.closest('button')) return;
-     
      setMissClickCount(prev => prev + 1);
   };
 
@@ -113,6 +127,9 @@ const ValentinePage = () => {
     }
 
     if (!invitation) return;
+    
+    // Si c'est un bot qui essaie de cliquer (peu probable mais bon), on ignore
+    if (isLikelyBot()) return;
 
     let clientX, clientY;
     if (e.type === 'touchstart' || e.type === 'touchmove') {
@@ -128,14 +145,8 @@ const ValentinePage = () => {
     const speed = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
     lastMousePos.current = { x: clientX, y: clientY };
 
-    // Facteur Panique
     const panicFactor = Math.min(speed / 20, 2.0); 
-
-    // Facteur Fatigue + ANTI-FRUSTRATION (Heuristique)
-    // Plus on a de missClick, plus le bouton devient "gentil"
     const mercyFactor = Math.min(0.8, missClickCount * 0.1); 
-    
-    // Après 15 essais ou beaucoup de rage, le bouton ralentit
     const fatigue = Math.max(0.2, (1 - Math.max(0, escapeCount - 15) * 0.05) - mercyFactor);
 
     setEscapeCount(prev => prev + 1);
@@ -144,11 +155,8 @@ const ValentinePage = () => {
     const currentTime = getElapsedTime();
     incrementAttempts(invitation.id, invitation.attempts + escapeCount, currentTime);
 
-    // Physique
     const baseJump = 150 + (escapeCount * 5);
-    // Le saut est réduit drastiquement si l'utilisateur est frustré (fatigue bas)
     const jumpDistance = (baseJump * (1 + panicFactor)) * fatigue;
-    
     const baseTime = 0.4;
     const transitionTime = Math.max(0.15, (baseTime / (1 + panicFactor)) / fatigue);
 
@@ -201,7 +209,6 @@ const ValentinePage = () => {
     });
   };
 
-  // --- FIRE-AND-FORGET ---
   const handleYes = async () => {
     if (navigator.vibrate) navigator.vibrate([100, 50, 100, 50, 200]);
 

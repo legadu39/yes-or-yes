@@ -20,7 +20,7 @@ const STRIPE_LINKS = {
 const Home = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { createInvitation, getSpyReport, verifyPaymentStatus, getOwnedInvitations, saveOwnedInvitation } = useApp(); // J'ai ajouté saveOwnedInvitation à l'export du contexte pour la restauration
+  const { createInvitation, getSpyReport, verifyPaymentStatus, getOwnedInvitations, saveOwnedInvitation } = useApp();
   
   const [formData, setFormData] = useState({ sender: '', valentine: '', plan: 'spy' });
   const [generatedLinks, setGeneratedLinks] = useState(null);
@@ -30,7 +30,6 @@ const Home = () => {
   const [copiedField, setCopiedField] = useState(null); // Pour le feedback visuel
 
   // --- INTELLIGENCE : PERSISTANCE DU BROUILLON ---
-  // Restauration au montage
   useEffect(() => {
     const draft = localStorage.getItem('draft_invitation');
     if (draft && status === 'idle') {
@@ -42,14 +41,12 @@ const Home = () => {
     }
   }, []);
 
-  // Sauvegarde automatique à chaque frappe
   useEffect(() => {
     if (status === 'idle') {
       localStorage.setItem('draft_invitation', JSON.stringify(formData));
     }
   }, [formData, status]);
 
-  // --- INTELLIGENCE : COHÉRENCE DU PLAN (AUTO-CORRECTION) ---
   useEffect(() => {
     if (status === 'success' && generatedLinks) {
        setStatus('idle');
@@ -64,9 +61,9 @@ const Home = () => {
 
     const paymentId = searchParams.get('payment_id'); 
     const fromStripe = searchParams.get('success');
-    const stateParam = searchParams.get('state'); // Récupération du state encodé (Intelligence N°1)
+    const stateParam = searchParams.get('state');
 
-    // Cas 1 : Retour standard avec paramètres URL (et potentiellement state pour cross-browser)
+    // Cas 1 : Retour standard avec paramètres URL
     if (paymentId && fromStripe === 'true' && !generatedLinks) {
         handlePaymentReturn(paymentId, owned, stateParam);
     } 
@@ -87,7 +84,6 @@ const Home = () => {
     }
   }, [searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // --- INTELLIGENCE : PRÉ-CHARGEMENT DES ASSETS ---
   const preloadAssets = () => {
     if (window.hasPreloaded) return;
     const audio = new Audio('/assets/music.ogg'); 
@@ -101,14 +97,13 @@ const Home = () => {
     let foundToken = null;
     let recoveredData = null;
 
-    // A. Essai via LocalStorage (Méthode classique)
+    // A. Essai via LocalStorage
     const foundLocal = owned.find(i => i.id === paymentId);
     if (foundLocal) {
         foundToken = foundLocal.token;
     }
 
     // B. Essai via URL State (Méthode Résiliente)
-    // Si on a perdu le localStorage (changement navigateur in-app -> chrome), on utilise l'URL
     if (!foundToken && stateParam) {
         try {
             const decoded = JSON.parse(atob(stateParam));
@@ -118,9 +113,6 @@ const Home = () => {
                 console.log("🔄 Session restaurée via URL cross-boundary");
                 
                 // On répare la mémoire locale pour le futur
-                // Note: saveOwnedInvitation doit être accessible (ajouté au context)
-                // Si pas dispo via context, on fait un patch manuel ici, mais on suppose qu'il l'est.
-                // Fallback manuel au cas où :
                 const stored = localStorage.getItem('yesoryes_owned') ? JSON.parse(localStorage.getItem('yesoryes_owned')) : [];
                 if (!stored.find(i => i.id === paymentId)) {
                     const newEntry = { id: paymentId, token: foundToken, createdAt: new Date().toISOString() };
@@ -134,7 +126,6 @@ const Home = () => {
 
     // INTELLIGENCE : UI OPTIMISTE (N°2)
     if (foundToken) {
-        // On affiche le succès IMMÉDIATEMENT sans attendre la DB
         const optimisticInvite = {
             id: paymentId,
             sender: recoveredData?.sender || (foundLocal ? "Vous" : "..."), 
@@ -143,18 +134,13 @@ const Home = () => {
         };
         
         displaySuccess(optimisticInvite, foundToken);
-        
-        // On lance la vérification en background (silencieuse)
-        // Elle ne fera qu'afficher une erreur si le paiement a réellement échoué au bout de X temps
         verifyBackgroundSilent(paymentId, foundToken);
     } else {
-        // Si on n'a vraiment aucun token, on doit attendre le serveur et prier
         waitForServerValidation(paymentId, foundLocal);
     }
   };
 
   const verifyBackgroundSilent = async (paymentId, token) => {
-      // Vérification discrète pour confirmer que tout est OK côté serveur
       let attempts = 0;
       const MAX_ATTEMPTS = 10;
       
@@ -163,8 +149,6 @@ const Home = () => {
           const fullInvite = await getSpyReport(paymentId, token);
           if (fullInvite) {
               localStorage.removeItem('draft_invitation');
-              // On met à jour avec les vraies données si besoin
-              // (Optionnel, l'UI est déjà là)
           } else if (attempts < MAX_ATTEMPTS) {
               setTimeout(poll, 3000);
           }
@@ -181,6 +165,7 @@ const Home = () => {
 
     const poll = async () => {
         attempts++;
+        // NOTE : verifyPaymentStatus vérifie maintenant que le payment_status est 'paid'
         const isPaid = await verifyPaymentStatus(paymentId);
         
         if (isPaid) {
@@ -221,6 +206,7 @@ const Home = () => {
     
     setGeneratedLinks({
         valentine: `${window.location.origin}/v/${invite.id}`,
+        // Avec la nouvelle sécurité, le lien Spy nécessite obligatoirement un token
         spy: (invite.plan === 'spy' || !invite.plan) ? `${window.location.origin}/spy/${invite.id}?token=${token}` : null,
     });
     setStatus('success');
@@ -275,8 +261,7 @@ const Home = () => {
 
       setStatus('paying');
       
-      // INTELLIGENCE : SÉCURISATION DU RETOUR (N°1)
-      // On encode l'état critique dans l'URL de retour pour survivre aux changements de navigateur
+      // INTELLIGENCE : SÉCURISATION DU RETOUR
       const statePayload = btoa(JSON.stringify({ 
           t: token, 
           id: id,

@@ -74,7 +74,7 @@ export const AppProvider = ({ children }) => {
   // --- 1. CRÉATION (RPC Sécurisée) ---
   const createInvitation = async (sender, valentine, plan) => {
     try {
-      // Appel RPC conforme à la signature SQL (sender, valentine, plan)
+      // Appel RPC conforme à la signature SQL V2
       const { data, error } = await supabase
         .rpc('create_invitation_v2', {
           p_sender: sender,
@@ -98,11 +98,12 @@ export const AppProvider = ({ children }) => {
   // --- 2. LECTURE PUBLIQUE (Pour la Valentine) ---
   const getPublicInvitation = async (id) => {
     try {
+      // Ce RPC ne renvoie quelque chose QUE si le paiement est validé ('paid')
       const { data, error } = await supabase
         .rpc('get_public_invitation', { target_id: id });
 
       if (error) throw error;
-      return data; // Retourne { id, sender, valentine, attempts, status }
+      return data; // Retourne { id, sender, valentine, attempts, status: game_status }
     } catch (error) {
       console.error("Erreur getPublicInvitation:", error);
       return null;
@@ -131,6 +132,16 @@ export const AppProvider = ({ children }) => {
 
   // --- 4. ACTIONS VALENTINE (RPC Anonymes) ---
   
+  // INTELLIGENCE : Signalement "Vu" (Anti-Ghosting)
+  const markAsViewed = async (id) => {
+    try {
+        await supabase.rpc('mark_invitation_viewed', { target_id: id });
+    } catch (e) {
+        // Silencieux : ce n'est pas critique pour l'UX utilisateur
+        console.warn("Erreur markAsViewed", e);
+    }
+  };
+
   const incrementAttempts = async (id, count, time) => {
     try {
       const { error } = await supabase
@@ -158,8 +169,6 @@ export const AppProvider = ({ children }) => {
       }));
 
       // 2. INTELLIGENCE : Tentative robuste avec fetch natif et keepalive
-      // Cela permet à la requête de survivre même si l'onglet est fermé/redirigé immédiatement.
-      // On reconstruit l'URL RPC manuellement pour utiliser fetch directement.
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
       
@@ -179,13 +188,12 @@ export const AppProvider = ({ children }) => {
         });
 
         if (response.ok) {
-           // Si le fetch direct a marché, on nettoie la queue tout de suite
            localStorage.removeItem('pending_acceptance');
            return true;
         }
       }
 
-      // 3. Fallback sur le client standard si le fetch manuel échoue (ou config manquante)
+      // 3. Fallback sur le client standard
       const { error } = await supabase
         .rpc('answer_invitation', {
           target_id: id,
@@ -194,14 +202,11 @@ export const AppProvider = ({ children }) => {
 
       if (error) throw error;
 
-      // 4. Si succès standard, on nettoie la queue
       localStorage.removeItem('pending_acceptance');
       return true;
 
     } catch (error) {
       console.warn("Erreur réseau acceptInvitation (sauvegardé en local pour retry):", error);
-      // On ne lance pas d'erreur fatale ici pour permettre à l'UI de continuer
-      // Le useEffect global se chargera de la synchro
       return false; 
     }
   };
@@ -211,7 +216,9 @@ export const AppProvider = ({ children }) => {
   const verifyPaymentStatus = async (id) => {
     try {
       const data = await getPublicInvitation(id);
-      return data && (data.status === 'paid' || data.status === 'accepted');
+      // Si data existe, c'est que le paiement est validé (grâce au RLS et RPC)
+      // On vérifie ensuite si le jeu a déjà été joué
+      return !!data;
     } catch (error) {
       console.error("Erreur verifyPaymentStatus:", error);
       return false;
@@ -222,6 +229,7 @@ export const AppProvider = ({ children }) => {
     createInvitation,
     getPublicInvitation,
     getSpyReport,
+    markAsViewed,
     incrementAttempts,
     acceptInvitation,
     verifyPaymentStatus,

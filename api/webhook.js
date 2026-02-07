@@ -64,20 +64,20 @@ export default async function handler(req, res) {
         // Idempotence : Vérifier si déjà payé pour éviter travail inutile
         const { data: current, error: fetchError } = await supabaseAdmin
             .from('invitations')
-            .select('status')
+            .select('payment_status')
             .eq('id', invitationId)
             .single();
 
-        if (!fetchError && current && (current.status === 'paid' || current.status === 'accepted')) {
+        if (!fetchError && current && current.payment_status === 'paid') {
              console.log('ℹ️ Déjà traité.');
              return res.json({ received: true });
         }
 
-        // Mise à jour du statut
+        // Mise à jour du statut PAIEMENT (Sécurité: on ne touche pas au game_status)
         const { error } = await supabaseAdmin
           .from('invitations')
           .update({ 
-            status: 'paid', 
+            payment_status: 'paid', 
             stripe_session_id: session.id,
           })
           .eq('id', invitationId);
@@ -87,7 +87,7 @@ export default async function handler(req, res) {
           return res.status(500).json({ error: 'Database update failed' });
         }
         
-        console.log('✅ Base de données mise à jour avec succès.');
+        console.log('✅ Base de données mise à jour avec succès (PAID).');
 
     } catch (err) {
         console.error('❌ Exception serveur:', err);

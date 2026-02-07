@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
-import { Shield, Clock, MousePointer2, CheckCircle2, HeartHandshake, LockKeyhole, Loader2, Ban } from 'lucide-react';
+import { supabase } from '../lib/supabaseClient';
+import { Shield, Clock, MousePointer2, CheckCircle2, HeartHandshake, LockKeyhole, Loader2, Ban, Eye } from 'lucide-react';
 
 const SpyDashboard = () => {
   const { id } = useParams();
@@ -12,21 +13,21 @@ const SpyDashboard = () => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [accessDenied, setAccessDenied] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState('connecting'); // 'connecting', 'live', 'polling'
   
-  const timerRef = useRef(null);
   const consecutiveErrors = useRef(0);
-  const [pollDelay, setPollDelay] = useState(3000); 
-
-  // Pour la détection de changements
+  
+  // Réf pour comparer les données et détecter les changements (Feedback Haptique)
   const prevDataRef = useRef(null);
 
-  const fetchData = async () => {
+  // Fonction de chargement initiale et unitaire
+  const fetchInitialData = async () => {
     try {
       const token = searchParams.get('token');
       if (!token) {
           setAccessDenied(true);
           setLoading(false);
-          return;
+          return null;
       }
 
       const result = await getSpyReport(id, token);
@@ -40,79 +41,82 @@ const SpyDashboard = () => {
       }
 
       consecutiveErrors.current = 0;
-
-      setData(prev => {
-          prevDataRef.current = prev; // On garde une copie de l'état précédent pour l'intelligence
-          if (JSON.stringify(prev) !== JSON.stringify(result)) {
-              if (result.status === 'accepted' && prev?.status !== 'accepted') {
-                  if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
-              }
-              return result;
-          }
-          return prev;
-      });
+      updateDataWithEffect(result);
+      setLoading(false);
+      return result;
       
     } catch (e) {
-      if (consecutiveErrors.current < 3) console.warn("Polling retry...", e.message);
-    } finally {
+      console.warn("Fetch error:", e.message);
       setLoading(false);
+      return null;
     }
   };
 
+  const updateDataWithEffect = (newData) => {
+      setData(prev => {
+          prevDataRef.current = prev;
+          
+          // Détection d'événements majeurs pour vibration
+          if (prev && JSON.stringify(prev) !== JSON.stringify(newData)) {
+              // Si le statut passe à acceptée
+              if (newData.status === 'accepted' && prev.status !== 'accepted') {
+                  if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 500]);
+              }
+              // Si nouvelle tentative
+              else if (newData.attempts > prev.attempts) {
+                  if (navigator.vibrate) navigator.vibrate(50);
+              }
+              // Si vue pour la première fois (Ghosting detection)
+              else if (newData.viewed_at && !prev.viewed_at) {
+                  if (navigator.vibrate) navigator.vibrate([50, 50, 50]);
+              }
+          }
+          return newData;
+      });
+  };
+
   useEffect(() => {
-    const calculateSmartDelay = () => {
-        // INTELLIGENCE N°3 : POLLING ADAPTATIF "CARDIAQUE"
-        // Si erreur, backoff classique
-        if (consecutiveErrors.current > 0) {
-            return Math.min(30000, 3000 * Math.pow(2, consecutiveErrors.current));
+    // 1. Chargement Initial
+    fetchInitialData();
+
+    // 2. INTELLIGENCE : Souscription Temps Réel (Websockets)
+    const channel = supabase
+      .channel(`invitation-${id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'invitations',
+          filter: `id=eq.${id}`,
+        },
+        (payload) => {
+          // Mise à jour instantanée
+          console.log("⚡ Realtime Update:", payload.new);
+          // On adapte le payload brut au format attendu (game_status -> status)
+          const adapted = { ...payload.new, status: payload.new.game_status };
+          updateDataWithEffect(adapted);
         }
-        
-        // Si l'utilisateur a quitté l'onglet, on ralentit drastiquement
-        if (document.hidden) return 30000;
-        
-        // Si c'est déjà gagné, on peut ralentir un peu
-        if (data && data.status === 'accepted') return 15000;
-
-        // CŒUR DU SYSTÈME : Détection d'activité
-        // Si le nombre de tentatives a bougé depuis le dernier fetch, c'est qu'elle est en train de jouer !
-        // On passe en mode "Temps Réel" (1s)
-        if (data && prevDataRef.current && data.attempts > prevDataRef.current.attempts) {
-            return 1000; 
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          setConnectionStatus('live');
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          setConnectionStatus('polling');
         }
+      });
 
-        const createdAt = data ? new Date(data.created_at) : new Date();
-        const timeDiff = (new Date() - createdAt) / 1000 / 60; 
-        
-        // Sinon rythme standard
-        return timeDiff < 15 ? 3000 : 10000;
-    };
-
-    const scheduleNext = () => {
-        const nextDelay = calculateSmartDelay();
-        setPollDelay(nextDelay); 
-        
-        timerRef.current = setTimeout(async () => {
-            await fetchData();
-            scheduleNext();
-        }, nextDelay);
-    };
-
-    fetchData().then(() => scheduleNext());
-
-    const handleVisibilityChange = () => {
-         if (!document.hidden) {
-             if (timerRef.current) clearTimeout(timerRef.current);
-             fetchData().then(() => scheduleNext());
-         }
-    };
-    
-    document.addEventListener("visibilitychange", handleVisibilityChange);
+    // 3. RESILIENCE : Polling de secours (Heartbeat)
+    // Au cas où le websocket saute, ou pour rafraîchir toutes les 30s
+    const interval = setInterval(async () => {
+        await fetchInitialData();
+    }, 30000);
 
     return () => {
-        if (timerRef.current) clearTimeout(timerRef.current);
-        document.removeEventListener("visibilitychange", handleVisibilityChange);
+      supabase.removeChannel(channel);
+      clearInterval(interval);
     };
-  }, [id, data]); // Dépendance sur data pour recalculer le délai intelligemment
+  }, [id]);
 
   if (loading) return (
     <div className="min-h-screen bg-ruby-dark flex items-center justify-center">
@@ -126,8 +130,8 @@ const SpyDashboard = () => {
             <Ban className="w-16 h-16 text-rose-gold mx-auto mb-4" />
             <h2 className="text-2xl text-rose-pale font-serif mb-2">Accès Interdit</h2>
             <p className="text-cream/70 mb-6 font-light">
-                La clé de sécurité est invalide ou le paiement est en attente.<br/>
-                Utilisez le lien fourni lors de votre commande.
+                Paiement en attente ou lien invalide.<br/>
+                Veuillez finaliser votre commande.
             </p>
             <button 
                 onClick={() => navigate('/')}
@@ -156,17 +160,26 @@ const SpyDashboard = () => {
     return Math.min(100, Math.max(0, Math.floor(rawScore)));
   };
 
-  // INTELLIGENCE : Matrice de Comportement Narrative
   const getPsychologicalProfile = () => {
+    if (data.status === 'accepted') {
+        if (attempts === 0) return { title: "Le Coup de Foudre", desc: "Elle a dit OUI immédiatement. Aucune hésitation détectée. L'évidence même." };
+        if (attempts > 15) return { title: "La Joueuse", desc: "Elle adore le défi et vous faire désirer. Un 'OUI' passionné caché derrière un jeu du chat et de la souris." };
+        if (time > 30 && attempts < 5) return { title: "La Stratège", desc: "Intérêt confirmé mais prudent. Elle a pris le temps de peser le pour et le contre avant de s'engager." };
+        if (time < 10 && attempts > 5) return { title: "L'Impulsive", desc: "Réaction vive et amusée ! Elle a tenté de fuir par réflexe mais l'envie était trop forte." };
+        return { title: "L'Équilibrée", desc: "Un mélange sain de jeu et de sincérité. Une conquête validée avec succès." };
+    } 
     
-    if (attempts === 0) return { title: "Le Coup de Foudre", desc: "Elle a dit OUI immédiatement. Aucune hésitation détectée. L'évidence même." };
-    if (attempts > 15) return { title: "La Joueuse", desc: "Elle adore le défi et vous faire désirer. Un 'OUI' passionné caché derrière un jeu du chat et de la souris." };
+    // Profils "En cours" (Ghosting)
+    if (data.viewed_at && data.status === 'pending') {
+        const viewedTime = new Date(data.viewed_at);
+        const now = new Date();
+        const diffMinutes = (now - viewedTime) / 1000 / 60;
+        
+        if (diffMinutes > 5) return { title: "Le Fantôme ?", desc: "Elle a ouvert la lettre il y a plus de 5 minutes sans répondre. Suspense insoutenable..." };
+        return { title: "Lecture en cours...", desc: "Elle est devant l'écran en ce moment même. Chut !" };
+    }
     
-    // Analyse fine croisée
-    if (time > 30 && attempts < 5) return { title: "La Stratège", desc: "Intérêt confirmé mais prudent. Elle a pris le temps de peser le pour et le contre avant de s'engager." };
-    if (time < 10 && attempts > 5) return { title: "L'Impulsive", desc: "Réaction vive et amusée ! Elle a tenté de fuir par réflexe mais l'envie était trop forte." };
-    
-    return { title: "L'Équilibrée", desc: "Un mélange sain de jeu et de sincérité. Une conquête validée avec succès." };
+    return { title: "En attente", desc: "Le message n'a pas encore été ouvert." };
   };
 
   const normalizedScore = calculateSmartScore();
@@ -190,10 +203,14 @@ const SpyDashboard = () => {
                     </p>
                 </div>
             </div>
-            {/* Indicateur de Polling */}
-            <div className="hidden sm:flex px-4 py-1 border border-ruby-light/50 text-ruby-light text-xs rounded-full bg-ruby-light/10 items-center gap-2 tracking-wider shadow-sm">
-                <div className={`w-2 h-2 bg-ruby-light rounded-full ${pollDelay < 5000 ? 'animate-pulse' : ''}`}></div> 
-                {pollDelay < 5000 ? 'LIVE' : 'SYNC'}
+            {/* Indicateur de Connexion */}
+            <div className={`hidden sm:flex px-4 py-1 border text-xs rounded-full items-center gap-2 tracking-wider shadow-sm transition-colors ${
+                connectionStatus === 'live' 
+                ? 'border-ruby-light/50 text-ruby-light bg-ruby-light/10' 
+                : 'border-orange-500/50 text-orange-400 bg-orange-500/10'
+            }`}>
+                <div className={`w-2 h-2 rounded-full ${connectionStatus === 'live' ? 'bg-ruby-light animate-pulse' : 'bg-orange-400'}`}></div> 
+                {connectionStatus === 'live' ? 'LIVE FEED' : 'SYNC...'}
             </div>
         </header>
 
@@ -204,8 +221,8 @@ const SpyDashboard = () => {
                 <span className="text-xs uppercase text-rose-gold/60 tracking-[0.3em] block mb-3">Sujet de l'observation</span>
                 <h2 className="text-5xl font-script text-cream mb-4 drop-shadow-md">{data.valentine}</h2>
                 <div className={`inline-flex items-center gap-2 font-medium tracking-wide px-4 py-2 rounded-lg border transition-colors duration-500 ${data.status === 'accepted' ? 'bg-green-900/30 border-green-500/50 text-green-400' : 'bg-ruby-light/10 border-ruby-light/20 text-ruby-light'}`}>
-                    <CheckCircle2 size={18} /> 
-                    {data.status === 'accepted' ? 'STATUT : OUI CONFIRMÉ' : 'STATUT : EN ATTENTE'}
+                    {data.status === 'accepted' ? <CheckCircle2 size={18} /> : <Eye size={18} />}
+                    {data.status === 'accepted' ? 'STATUT : OUI CONFIRMÉ' : (data.viewed_at ? 'STATUT : VU (HÉSITATION)' : 'STATUT : NON LU')}
                 </div>
             </div>
 

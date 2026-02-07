@@ -1,0 +1,62 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-ruby-dark text-cream;
+    font-feature-settings: "cv11", "ss01";
+  }
+}
+
+@layer components {
+  .btn-ruby {
+    /* CORRECTION ICI : "from-ruby" au lieu de "from-ruby-DEFAULT" */
+    @apply bg-gradient-to-r from-ruby to-ruby-dark text-rose-pale 
+           border border-rose-gold/50 shadow-[0_0_20px_rgba(155,27,48,0.3)]
+           hover:shadow-[0_0_30px_rgba(210,77,87,0.5)] hover:border-rose-gold
+           active:scale-95 transition-all duration-300;
+  }
+
+  .card-valentine {
+    @apply bg-ruby-dark/40 backdrop-blur-xl border border-rose-gold/20 rounded-2xl
+           shadow-[0_10px_40px_-10px_rgba(0,0,0,0.5)];
+  }
+}
+
+/* Texture Cinématographique (Noise) */
+.bg-noise {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 50;
+  opacity: 0.05;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+}
+
+/* Animations pour la Preuve Sociale */
+@keyframes slide-up-fade {
+  0% {
+    opacity: 0;
+    transform: translateY(20px) scale(0.95);
+  }
+  10% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  90% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.95);
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up-fade 6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}

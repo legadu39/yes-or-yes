@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { Eye, Sparkles, Copy, Heart, LockKeyhole, TrendingUp, CreditCard, Timer, Loader2, History, AlertTriangle, Check, Share2 } from 'lucide-react';
 
@@ -596,11 +596,11 @@ const Home = () => {
               © {new Date().getFullYear()} YesOrYes. Tous droits réservés.
           </p>
           <div className="flex justify-center gap-4 text-[10px] text-rose-gold">
-              <a href="/legal/mentions-legales" className="cursor-pointer hover:underline text-rose-gold decoration-rose-gold">Mentions Légales</a>
+              <Link to="/legal/mentions-legales" className="cursor-pointer hover:underline text-rose-gold decoration-rose-gold">Mentions Légales</Link>
               <span>|</span>
-              <a href="/legal/cgv" className="cursor-pointer hover:underline text-rose-gold decoration-rose-gold">CGV</a>
+              <Link to="/legal/cgv" className="cursor-pointer hover:underline text-rose-gold decoration-rose-gold">CGV</Link>
               <span>|</span>
-              <a href="/legal/confidentialite" className="cursor-pointer hover:underline text-rose-gold decoration-rose-gold">Confidentialité</a>
+              <Link to="/legal/confidentialite" className="cursor-pointer hover:underline text-rose-gold decoration-rose-gold">Confidentialité</Link>
           </div>
       </footer>
       

@@ -7,6 +7,7 @@ import Home from './pages/Home';
 import ValentinePage from './pages/ValentinePage';
 import Accepted from './pages/Accepted';
 import SpyDashboard from './pages/SpyDashboard';
+import Legal from './pages/Legal';
 
 function App() {
   return (
@@ -20,6 +21,10 @@ function App() {
           <Route path="/v/:id" element={<ValentinePage />} />
           <Route path="/accepted" element={<Accepted />} />
           <Route path="/spy/:id" element={<SpyDashboard />} />
+          
+          {/* Routes Légales */}
+          <Route path="/legal/:type" element={<Legal />} />
+
           {/* Catch-all pour rediriger les mauvaises URLs vers l'accueil */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

@@ -1,14 +1,14 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 
-// --- STABILITY FIX: NATIVE UUID GENERATOR ---
-// Removes the dependency on the 'uuid' package to prevent minification errors ("n is not a function")
+// --- STABILITY FIX: GÉNÉRATEUR UUID NATIF (ZERO DEPENDENCY) ---
+// On supprime l'import 'uuid' qui causait le crash "n is not a function" en prod.
 const generateUUID = () => {
-  // 1. Modern Browsers (Preferred)
+  // 1. Méthode moderne (99% des navigateurs récents)
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return crypto.randomUUID();
   }
-  // 2. Fallback for older environments
+  // 2. Fallback robuste pour les anciens environnements
   return '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, c =>
     (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
   );

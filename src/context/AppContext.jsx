@@ -174,30 +174,26 @@ export const AppProvider = ({ children }) => {
   };
 
   const getPublicInvitation = async (id) => {
-    try {
-      const { data, error } = await supabase
-        .from('invitations')
-        .select('id, sender, valentine, plan, game_status, payment_status, attempts, viewed_at')
-        .eq('id', id)
-        .single();
+  try {
+    const { data, error } = await supabase
+      .from('invitations')
+      .select('id, sender, valentine, plan, game_status, payment_status, attempts, viewed_at')
+      .eq('id', id)
+      .single();
 
-      if (error) {
-        console.error("Erreur getPublicInvitation", error);
-        return null;
-      }
-
-      // Vérification paiement
-      if (data.payment_status !== 'paid') {
-        console.warn("Invitation trouvée mais non payée");
-        return null;
-      }
-
-      return { ...data, status: data.game_status };
-    } catch (error) {
+    if (error) {
       console.error("Erreur getPublicInvitation", error);
       return null;
     }
-  };
+
+    // ✅ CORRECTION : On retourne l'invitation même si non payée
+    // La vérification du paiement se fera ailleurs si nécessaire
+    return { ...data, status: data.game_status };
+  } catch (error) {
+    console.error("Erreur getPublicInvitation", error);
+    return null;
+  }
+};
 
   const markAsViewed = async (id) => {
     try {

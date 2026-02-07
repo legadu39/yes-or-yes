@@ -122,6 +122,7 @@ export default async function handler(req, res) {
       }
 
       console.log(`✅ Invitation ${invitationId} marquée comme PAID`);
+      console.log(`📧 Vous pouvez maintenant envoyer un email de confirmation à l'utilisateur`);
       return res.status(200).json({ received: true, status: 'updated' });
 
     } catch (err) {

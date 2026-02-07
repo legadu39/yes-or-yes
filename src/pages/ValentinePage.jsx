@@ -67,7 +67,15 @@ const ValentinePage = () => {
         // Si pas de données (ex: non payé ou ID invalide), on redirige
         navigate('/'); 
       } else {
+        // ✅ NOUVELLE VÉRIFICATION
+        if (data.payment_status !== 'paid') {
+          // Afficher un écran d'attente au lieu de bloquer
+          setInvitation({ ...data, isPending: true });
+      } else {
         setInvitation(data);
+      }
+        
+        
         startTimeRef.current = Date.now();
         
         // INTELLIGENCE : Marquer comme "Vu" pour le Dashboard Espion
@@ -271,6 +279,30 @@ const ValentinePage = () => {
     );
   }
 
+// ✅ ÉCRAN D'ATTENTE PAIEMENT
+if (invitation?.isPending) {
+  return (
+    <div className="h-screen w-screen bg-ruby-dark flex flex-col items-center justify-center relative overflow-hidden z-50">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-ruby-light/20 via-ruby-dark to-[#1a0508] pointer-events-none"></div>
+      
+      <div className="relative z-10 text-center p-8">
+        <div className="mb-6">
+          <Heart className="w-16 h-16 text-rose-gold animate-pulse mx-auto mb-4" />
+        </div>
+        <h2 className="text-3xl font-script text-rose-pale mb-4">Validation en cours...</h2>
+        <p className="text-cream/60 text-sm mb-6">
+          {invitation.sender} finalise sa commande.<br/>
+          Vous recevrez l'invitation d'ici quelques instants.
+        </p>
+        <div className="flex justify-center gap-2">
+          <div className="w-2 h-2 bg-rose-gold rounded-full animate-bounce" style={{animationDelay: '0s'}}></div>
+          <div className="w-2 h-2 bg-rose-gold rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+          <div className="w-2 h-2 bg-rose-gold rounded-full animate-bounce" style={{animationDelay: '0.4s'}}></div>
+        </div>
+      </div>
+    </div>
+  );
+}
   return (
     <div 
         onClick={handleBackgroundClick} 

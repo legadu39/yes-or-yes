@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
-import { Music, VolumeX, Heart, MailOpen, RefreshCw } from 'lucide-react';
+import { Music, VolumeX, Heart, MailOpen } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 const ValentinePage = () => {
@@ -61,7 +61,6 @@ const ValentinePage = () => {
       const data = await getPublicInvitation(id);
       
       if (!data) { 
-        // Si l'invitation n'existe pas, retour à l'accueil
         navigate('/'); 
       } else {
         // GESTION INTELLIGENTE DE L'ÉTAT DE PAIEMENT & POLLING
@@ -69,7 +68,7 @@ const ValentinePage = () => {
             // Cas 1: Paiement en attente -> On affiche l'écran d'attente
             setInvitation({ ...data, isPending: true });
 
-            // Démarrage du Polling (Vérification toutes les 3s)
+            // MISE À JOUR CRITIQUE : Démarrage du Polling (Vérification toutes les 3s)
             // Cela permet de débloquer l'écran automatiquement dès que Stripe valide
             pollingInterval = setInterval(async () => {
                 const check = await getPublicInvitation(id);
@@ -93,7 +92,7 @@ const ValentinePage = () => {
 
     fetchInvite();
     
-    // Nettoyage complet (Audio + Polling) au démontage du composant
+    // Nettoyage complet (Audio + Polling)
     return () => { 
       if (audioRef.current) {
         audioRef.current.pause();
@@ -104,7 +103,6 @@ const ValentinePage = () => {
   }, [id, getPublicInvitation, markAsViewed, navigate]);
 
   const handleStartExperience = () => {
-    // Nécessaire pour contourner les politiques Autoplay des navigateurs mobiles
     if (audioRef.current) {
         audioRef.current.play()
             .then(() => setIsPlaying(true))
@@ -135,8 +133,8 @@ const ValentinePage = () => {
     // 1. Détection du type d'input (Touch vs Mouse)
     const isTouch = e.type.includes('touch');
     if (isTouch) {
-        // Sur mobile, on empêche le scroll/zoom accidentel sur le bouton
-        // e.preventDefault(); 
+        // Sur mobile, on empêche le scroll/zoom accidentel
+        // e.preventDefault(); // Commenté pour ne pas bloquer totalement l'UX si nécessaire
     }
 
     // 2. Calcul Vecteur Vélocité (Pour fuir intelligemment)
@@ -152,7 +150,7 @@ const ValentinePage = () => {
     lastMousePos.current = { x: clientX, y: clientY };
 
     // 3. Incrémenter la "Fatigue" du bouton
-    // Sur mobile, il se fatigue 2x plus vite pour éviter la frustration excessive
+    // Sur mobile, il se fatigue 2x plus vite pour éviter la rage
     const fatigueIncrement = isTouch ? 10 : 4;
     const newFatigue = Math.min(fatigueLevel + fatigueIncrement, 100);
     setFatigueLevel(newFatigue);
@@ -169,7 +167,7 @@ const ValentinePage = () => {
     const vivacity = Math.max(0.1, 1 - (newFatigue / 80)); 
     
     // Distance de saut : Base * Vivacité
-    // Mobile : distance de base réduite (90px vs 200px desktop)
+    // Mobile : distance de base réduite (100px vs 200px desktop)
     const baseJump = isTouch ? 90 : 200;
     const jumpDistance = baseJump * vivacity; 
 
@@ -179,7 +177,7 @@ const ValentinePage = () => {
     // Feedback Haptique (Vibration décroissante)
     if (navigator.vibrate && vivacity > 0.5) navigator.vibrate(20);
 
-    // 5. Calcul Nouvelle Position (Fuite vectorielle simplifiée + Random Jitter)
+    // 5. Calcul Nouvelle Position (Fuite vectorielle simplifiée + Random)
     const btnRect = btnRef.current 
         ? btnRef.current.getBoundingClientRect() 
         : { left: window.innerWidth/2, top: window.innerHeight/2, width: 100, height: 40 };
@@ -284,7 +282,7 @@ const ValentinePage = () => {
     );
   }
 
-  // ÉCRAN D'ATTENTE PAIEMENT (AVEC GESTION AUTOMATIQUE + MANUELLE)
+  // ÉCRAN D'ATTENTE PAIEMENT (CAS RARE MAIS GÉRÉ)
   if (invitation?.isPending) {
     return (
       <div className="h-screen w-screen bg-ruby-dark flex flex-col items-center justify-center relative overflow-hidden z-50">
@@ -294,27 +292,19 @@ const ValentinePage = () => {
           <h2 className="text-3xl font-script text-rose-pale mb-4">Un instant...</h2>
           <p className="text-cream/60 text-sm mb-6">
             L'invitation est en cours de scellage.<br/>
-            Veuillez patienter...
+            Veuillez patienter quelques secondes.
           </p>
-          <div className="flex justify-center gap-2 mb-8">
+          <div className="flex justify-center gap-2">
             <div className="w-2 h-2 bg-rose-gold rounded-full animate-bounce" style={{animationDelay: '0s'}}></div>
             <div className="w-2 h-2 bg-rose-gold rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
             <div className="w-2 h-2 bg-rose-gold rounded-full animate-bounce" style={{animationDelay: '0.4s'}}></div>
           </div>
-          
-          {/* Bouton de secours au cas où le polling échoue ou le réseau est capricieux */}
-          <button 
-            onClick={() => window.location.reload()}
-            className="flex items-center gap-2 mx-auto px-4 py-2 border border-rose-gold/30 rounded-full text-rose-gold/70 text-xs uppercase tracking-widest hover:bg-rose-gold/10 transition-colors"
-          >
-            <RefreshCw size={14} /> Vérifier manuellement
-          </button>
         </div>
       </div>
     );
   }
 
-  // INTERFACE PRINCIPALE DU JEU
+  // INTERFACE PRINCIPALE
   return (
     <div className="h-screen w-screen bg-ruby-dark overflow-hidden relative flex flex-col items-center justify-center select-none animate-fade-in-slow">
       

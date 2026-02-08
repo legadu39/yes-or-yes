@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { 
@@ -27,8 +27,11 @@ const Home = () => {
     createInvitation, 
     getSpyReport, 
     verifyPaymentStatus, 
+    getPublicInvitation, // Import crucial pour la Vérité Unique
     getOwnedInvitations,
-    ownedInvitations 
+    ownedInvitations,
+    saveDraft, // Utilisation de la nouvelle fonction contextuelle
+    recoverDraft
   } = useApp();
 
   const [formData, setFormData] = useState({ sender: '', valentine: '', plan: 'spy' });
@@ -40,25 +43,25 @@ const Home = () => {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
-  // --- INTELLIGENCE : PERSISTANCE DU BROUILLON ---
+  // --- INTELLIGENCE : PERSISTANCE ANTI-AMNÉSIE ---
   useEffect(() => {
-    const draft = localStorage.getItem('draft_invitation');
-    if (draft && status === 'idle') {
-      try {
-        setFormData(JSON.parse(draft));
-      } catch (e) {
-        localStorage.removeItem('draft_invitation');
-      }
+    // Tentative de récupération au chargement
+    if (status === 'idle') {
+        const draft = recoverDraft();
+        if (draft) {
+            setFormData(draft);
+        }
     }
   }, []);
 
   useEffect(() => {
+    // Sauvegarde automatique à chaque changement
     if (status === 'idle') {
-      localStorage.setItem('draft_invitation', JSON.stringify(formData));
+        saveDraft(formData);
     }
-  }, [formData, status]);
+  }, [formData, status, saveDraft]);
 
-  // --- LOGIQUE RETOUR PAIEMENT ---
+  // --- LOGIQUE RETOUR PAIEMENT (SMART RECOVERY) ---
   useEffect(() => {
     const urlId = searchParams.get('payment_id') || searchParams.get('id') || searchParams.get('client_reference_id');
     const fromStripe = searchParams.get('success') === 'true';
@@ -68,13 +71,8 @@ const Home = () => {
       if (fromStripe || stateParam) {
         handlePaymentReturn(urlId, stateParam);
       } else {
-        verifyPaymentStatus(urlId).then(isPaid => {
-          if (isPaid) {
-            const owned = getOwnedInvitations();
-            const foundLocal = owned.find(i => i.id === urlId);
-            displaySuccess({ id: urlId, ...foundLocal }, foundLocal?.token);
-          }
-        });
+        // Cas : L'utilisateur revient plus tard ou rafraîchit la page de succès
+        handleBackgroundCheck(urlId);
       }
     }
     else if (fromStripe && !urlId && !generatedLinks) {
@@ -90,9 +88,24 @@ const Home = () => {
     window.hasPreloaded = true;
   };
 
+  const handleBackgroundCheck = async (urlId) => {
+    const isPaid = await verifyPaymentStatus(urlId);
+    if (isPaid) {
+        // On récupère la vérité depuis le serveur
+        const serverData = await getPublicInvitation(urlId);
+        const owned = getOwnedInvitations();
+        const foundLocal = owned.find(i => i.id === urlId);
+        
+        // Fusion intelligente des données
+        const finalData = { ...foundLocal, ...serverData, id: urlId };
+        displaySuccess(finalData, foundLocal?.token);
+    }
+  };
+
   const handlePaymentReturn = async (paymentId, stateParam) => {
     console.log("Traitement retour paiement pour:", paymentId);
     
+    // 1. Récupération contexte local (Token Admin)
     const owned = getOwnedInvitations();
     let foundToken = null;
     let recoveredData = null;
@@ -102,9 +115,9 @@ const Home = () => {
         const decoded = JSON.parse(atob(stateParam));
         if (decoded.t && decoded.id === paymentId) {
           foundToken = decoded.t;
-          // IMPORTANT : On récupère aussi le PLAN ('p') pour savoir quoi afficher
-          recoveredData = { sender: decoded.s, valentine: decoded.v, plan: decoded.p };
-          repairLocalMemory(paymentId, foundToken, recoveredData);
+          // Note: On ne se fie plus aveuglément à 'p' (plan) du state, on va vérifier la DB
+          recoveredData = { sender: decoded.s, valentine: decoded.v };
+          repairLocalMemory(paymentId, foundToken, { ...recoveredData, plan: decoded.p });
         }
       } catch (e) {
         console.error("Échec décodage state URL", e);
@@ -117,75 +130,100 @@ const Home = () => {
         recoveredData = foundLocal;
     }
 
-    if (foundToken) {
-      // On passe le plan récupéré (ou 'spy' par défaut uniquement si donnée corrompue)
-      displaySuccess({
-        id: paymentId,
-        sender: recoveredData?.sender || "Vous",
-        valentine: recoveredData?.valentine || "...",
-        plan: recoveredData?.plan || 'spy' 
-      }, foundToken);
-      
-      verifyBackgroundSilent(paymentId, foundToken);
-    } else {
-      waitForServerValidation(paymentId, foundLocal);
+    // 2. VÉRITÉ UNIQUE : Interrogation immédiate du serveur
+    // On ne fait pas confiance au localStorage pour le statut final
+    try {
+        const serverData = await getPublicInvitation(paymentId);
+        
+        if (serverData && serverData.payment_status === 'paid') {
+            console.log("✅ Confirmation serveur reçue. Plan:", serverData.plan);
+            
+            // Mise à jour de la donnée locale avec la vérité serveur
+            const finalInvite = {
+                id: paymentId,
+                sender: serverData.sender || recoveredData?.sender || "Vous",
+                valentine: serverData.valentine || recoveredData?.valentine || "...",
+                plan: serverData.plan // C'est ici que la magie opère (Basic -> Spy)
+            };
+
+            // Sauvegarde de la correction
+            repairLocalMemory(paymentId, foundToken, finalInvite);
+
+            displaySuccess(finalInvite, foundToken);
+            verifyBackgroundSilent(paymentId, foundToken);
+        } else {
+            // Si pas encore payé en DB (latence Webhook), on attend
+            waitForServerValidation(paymentId, foundLocal || { id: paymentId, ...recoveredData });
+        }
+    } catch (e) {
+        console.warn("Erreur fetch serverData, fallback polling", e);
+        waitForServerValidation(paymentId, foundLocal);
     }
   };
 
   const repairLocalMemory = (id, token, data) => {
     const stored = localStorage.getItem('yesoryes_owned') ? JSON.parse(localStorage.getItem('yesoryes_owned')) : [];
-    if (!stored.find(i => i.id === id)) {
-       const newEntry = { id, token, createdAt: new Date().toISOString(), ...data };
-       const newList = [newEntry, ...stored];
-       localStorage.setItem('yesoryes_owned', JSON.stringify(newList));
-    }
+    // On met à jour l'entrée existante ou on en crée une nouvelle
+    const filtered = stored.filter(i => i.id !== id);
+    const newEntry = { id, token, createdAt: new Date().toISOString(), ...data };
+    const newList = [newEntry, ...filtered];
+    localStorage.setItem('yesoryes_owned', JSON.stringify(newList));
   };
 
   const verifyBackgroundSilent = async (paymentId, token) => {
-    let attempts = 0;
-    const poll = async () => {
-      attempts++;
-      const fullInvite = await getSpyReport(paymentId, token);
-      if (fullInvite) {
-        localStorage.removeItem('draft_invitation');
-      } else if (attempts < 5) {
-        setTimeout(poll, 3000);
-      }
-    };
-    poll();
+    // Juste pour préchauffer le cache ou vérifier les données
+    if (token) await getSpyReport(paymentId, token);
+    localStorage.removeItem('draft_invitation');
   };
 
-  const waitForServerValidation = async (paymentId, foundLocal) => {
+  // --- POLLING ADAPTATIF (Backoff Exponentiel) ---
+  const waitForServerValidation = async (paymentId, contextData) => {
     setStatus('verifying');
-    let attempts = 0;
-    const MAX_ATTEMPTS = 20; 
-    let delay = 2000;
+    let attempt = 0;
+    const maxAttempts = 25;
+    
+    // Suite de délais progressive : 1s, 1s, 2s, 2s, 3s, 3s, 5s...
+    const delays = [1000, 1000, 2000, 2000, 3000, 3000, 5000];
 
     const poll = async () => {
-      attempts++;
-      const isPaid = await verifyPaymentStatus(paymentId);
+      attempt++;
+      console.log(`Polling tentative ${attempt}...`);
       
-      if (isPaid) {
+      // On récupère l'objet complet pour vérifier le plan
+      const serverData = await getPublicInvitation(paymentId);
+      
+      if (serverData && serverData.payment_status === 'paid') {
         localStorage.removeItem('draft_invitation');
         
-        if (foundLocal && foundLocal.token) {
-          const fullInvite = await getSpyReport(paymentId, foundLocal.token);
-          displaySuccess(fullInvite || foundLocal, foundLocal.token);
-        } else {
-          displayMinimalSuccess(paymentId);
+        const finalData = {
+            ...contextData,
+            plan: serverData.plan // La DB a toujours raison
+        };
+        
+        // Si on a le token, on met à jour la mémoire
+        if (contextData?.token) {
+            repairLocalMemory(paymentId, contextData.token, finalData);
         }
-      } else if (attempts < MAX_ATTEMPTS) {
-        delay = Math.min(delay * 1.1, 5000); 
-        setTimeout(poll, delay);
+
+        displaySuccess(finalData, contextData?.token);
+
+      } else if (attempt < maxAttempts) {
+        // Choix du délai adaptatif
+        const nextDelay = delays[Math.min(attempt, delays.length - 1)] || 5000;
+        setTimeout(poll, nextDelay);
       } else {
         setStatus('verifying_long');
       }
     };
+    
     poll();
   };
 
   const displaySuccess = (invite, token) => {
     if (!invite) return;
+    
+    console.log("🎉 Affichage Succès. Plan:", invite.plan);
+
     setFormData({ 
         sender: invite.sender || "Vous", 
         valentine: invite.valentine || "...", 
@@ -264,13 +302,15 @@ const Home = () => {
       const returnUrl = encodeURIComponent(`${window.location.origin}?payment_id=${id}&success=true&state=${statePayload}`);
       const stripeUrl = (formData.plan === 'spy' || formData.plan === 'premium') ? STRIPE_LINKS.spy : STRIPE_LINKS.basic;
       
-      // MODE PRODUCTION (Commenté pour le TEST)
-      // window.location.href = `${stripeUrl}?client_reference_id=${id}&redirect_url=${returnUrl}`;
+      // MODE PRODUCTION (Activé pour le lancement commercial)
+      window.location.href = `${stripeUrl}?client_reference_id=${id}&redirect_url=${returnUrl}`;
 
-      // MODE TEST (BYPASS) - ACTIVÉ
+      // MODE TEST (Désactivé)
+      /*
       console.log("🚧 MODE TEST: Bypass Stripe activé.");
       const fakeReturnUrl = `${window.location.origin}?payment_id=${id}&success=true&state=${statePayload}`;
       setTimeout(() => { window.location.href = fakeReturnUrl; }, 1500);
+      */
 
     } catch (error) {
       console.error("Erreur handleSubmit:", error);
@@ -411,7 +451,6 @@ const Home = () => {
       <header className="text-center mb-10 relative z-10 max-w-2xl px-4">
         <h1 className="text-7xl md:text-8xl font-script text-rose-pale mb-4 drop-shadow-lg">YesOrYes</h1>
         
-        {/* EXPLICATION DU CONCEPT (STRATÉGIE 10/10) */}
         <p className="text-cream/90 text-sm md:text-base font-serif italic mb-6 leading-relaxed border-l-2 border-rose-gold/50 pl-4 py-2 bg-ruby-light/10 rounded-r-lg shadow-lg">
           Envoyez le lien. Le bouton "NON" s'enfuira quand elle essaiera de cliquer. <br/>
           <span className="text-rose-gold/70 text-xs uppercase tracking-widest not-italic font-bold">
@@ -497,7 +536,6 @@ const Home = () => {
             className="w-full btn-ruby py-4 rounded-lg tracking-[0.2em] text-sm uppercase font-medium transition-all shadow-lg hover:shadow-rose-gold/20 relative overflow-hidden"
           >
             {status === 'idle' && (
-                // STRATÉGIE PSYCHOLOGIQUE : BOUTON DYNAMIQUE
                 <span className="flex items-center justify-center gap-3">
                     {formData.plan === 'spy' ? (
                         <>Inviter + Activer le Mouchard <Shield size={16} fill="currentColor" /></>

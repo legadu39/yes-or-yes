@@ -56,6 +56,24 @@ export const AppProvider = ({ children }) => {
     return () => window.removeEventListener('online', syncPendingActions);
   }, []);
 
+  // --- INTELLIGENCE : GESTION DES BROUILLONS ---
+  const saveDraft = (data) => {
+    try {
+        localStorage.setItem('draft_invitation', JSON.stringify(data));
+    } catch (e) {
+        console.warn("Erreur sauvegarde brouillon", e);
+    }
+  };
+
+  const recoverDraft = () => {
+    try {
+        const draft = localStorage.getItem('draft_invitation');
+        return draft ? JSON.parse(draft) : null;
+    } catch (e) {
+        return null;
+    }
+  };
+
   // --- CRÉATION VIA RPC V2 ---
   const createInvitation = async (sender, valentine, plan) => {
     try {
@@ -127,7 +145,6 @@ export const AppProvider = ({ children }) => {
         });
         
         if (error) {
-            // On log mais on ne bloque pas (c'est une tentative de recovery)
             console.warn("Erreur RPC get_invitation_by_stripe_id", error);
             return null;
         }
@@ -166,12 +183,11 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  // --- FONCTION DE LECTURE INTELLIGENTE (FIX CRASH UUID) ---
+  // --- FONCTION DE LECTURE INTELLIGENTE ---
   const getPublicInvitation = async (id) => {
     try {
       // DÉTECTION DU TYPE D'ID :
       // Si l'ID commence par "cs_", c'est un ID Stripe (Session ID).
-      // Sinon, on assume que c'est un UUID classique.
       const isStripeId = id && typeof id === 'string' && id.startsWith('cs_');
       
       const rpcMethod = isStripeId ? 'get_invitation_by_stripe_id' : 'get_public_invitation';
@@ -180,7 +196,6 @@ export const AppProvider = ({ children }) => {
       const { data, error } = await supabase.rpc(rpcMethod, rpcParams);
 
       if (error) {
-        // Ignorer les erreurs "introuvable" standard (PGRST116) pour éviter le spam console
         if (error.code !== 'PGRST116') {
             console.error(`Erreur RPC ${rpcMethod}`, error);
         }
@@ -232,8 +247,6 @@ export const AppProvider = ({ children }) => {
             'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
         };
         
-        // Beacon ne supporte pas les headers auth custom facilement sur tous les navigateurs
-        // On fallback sur fetch keepalive
         const response = await fetch(url, {
           method: 'POST',
           headers: headers,
@@ -286,7 +299,9 @@ export const AppProvider = ({ children }) => {
     ownedInvitations,
     getOwnedInvitations,
     updateOwnedInvitations,
-    recoverBySessionId
+    recoverBySessionId,
+    saveDraft,
+    recoverDraft
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

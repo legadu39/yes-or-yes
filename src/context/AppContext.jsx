@@ -120,20 +120,19 @@ export const AppProvider = ({ children }) => {
     
     console.log("🕵️ Tentative récupération par Session ID:", sessionId);
     
-    // Essayer de trouver une invitation locale qui correspond (optimisation)
-    // Note: On ne stocke pas le session_id localement au départ, donc ceci est une fallback future
-    
     try {
-        // On tente de récupérer l'invitation publique associée à ce session ID
-        // Note: Cela nécessite que la colonne stripe_session_id soit accessible ou via une RPC
-        // Si RLS bloque, cette requête peut échouer. 
-        // Solution de contournement : on appelle getPublicInvitation sur les ID récents du cache si possible
-        // Mais ici, supposons qu'on utilise une méthode de force brute sur les ownedInvitations si l'ID manque
+        // Appel à la nouvelle fonction SQL dédiée
+        const { data, error } = await supabase.rpc('get_invitation_by_stripe_id', { 
+            stripe_id: sessionId 
+        });
         
-        // Comme nous n'avons pas créé de RPC spécifique 'get_by_session', 
-        // nous allons nous appuyer sur la logique de Home.jsx qui combine ID et Session.
-        // Cette fonction sert de placeholder pour une future RPC 'recover_lost_invitation'
-        return null; 
+        if (error) {
+            // On log mais on ne bloque pas (c'est une tentative de recovery)
+            console.warn("Erreur RPC get_invitation_by_stripe_id", error);
+            return null;
+        }
+
+        return data; 
     } catch (e) {
         console.error("Erreur recovery", e);
         return null;
@@ -167,15 +166,24 @@ export const AppProvider = ({ children }) => {
     }
   };
 
+  // --- FONCTION DE LECTURE INTELLIGENTE (FIX CRASH UUID) ---
   const getPublicInvitation = async (id) => {
     try {
-      const { data, error } = await supabase.rpc('get_public_invitation', {
-        target_id: id
-      });
+      // DÉTECTION DU TYPE D'ID :
+      // Si l'ID commence par "cs_", c'est un ID Stripe (Session ID).
+      // Sinon, on assume que c'est un UUID classique.
+      const isStripeId = id && typeof id === 'string' && id.startsWith('cs_');
+      
+      const rpcMethod = isStripeId ? 'get_invitation_by_stripe_id' : 'get_public_invitation';
+      const rpcParams = isStripeId ? { stripe_id: id } : { target_id: id };
+
+      const { data, error } = await supabase.rpc(rpcMethod, rpcParams);
 
       if (error) {
-        // Ignorer les erreurs "introuvable" standard pour éviter le spam console
-        if (error.code !== 'PGRST116') console.error("Erreur RPC get_public_invitation", error);
+        // Ignorer les erreurs "introuvable" standard (PGRST116) pour éviter le spam console
+        if (error.code !== 'PGRST116') {
+            console.error(`Erreur RPC ${rpcMethod}`, error);
+        }
         return null;
       }
 
@@ -258,6 +266,7 @@ export const AppProvider = ({ children }) => {
 
   const verifyPaymentStatus = async (id) => {
     try {
+      // getPublicInvitation gère maintenant automatiquement le cas ID Stripe vs UUID
       const data = await getPublicInvitation(id);
       return !!data && data.payment_status === 'paid';
     } catch (error) {
@@ -276,7 +285,7 @@ export const AppProvider = ({ children }) => {
     verifyPaymentStatus,
     ownedInvitations,
     getOwnedInvitations,
-    updateOwnedInvitations, // Exporté pour usage dans Home.jsx
+    updateOwnedInvitations,
     recoverBySessionId
   };
 

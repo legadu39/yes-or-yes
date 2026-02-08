@@ -261,10 +261,21 @@ const Home = () => {
         p: formData.plan // <--- AJOUTÉ
       }));
       
+      // --- MODIFICATION TEMPORAIRE POUR TEST (BYPASS) ---
+      console.log("🚧 MODE TEST: Bypass Stripe activé. Simulation du retour de paiement...");
+      const fakeReturnUrl = `${window.location.origin}?payment_id=${id}&success=true&state=${statePayload}`;
+      
+      // Simulation d'un délai réseau pour le réalisme de l'UX
+      setTimeout(() => {
+        window.location.href = fakeReturnUrl;
+      }, 1500);
+
+      // CODE ORIGINAL (COMMENTÉ POUR LE TEST)
+      /*
       const returnUrl = encodeURIComponent(`${window.location.origin}?payment_id=${id}&success=true&state=${statePayload}`);
       const stripeUrl = (formData.plan === 'spy' || formData.plan === 'premium') ? STRIPE_LINKS.spy : STRIPE_LINKS.basic;
-      
       window.location.href = `${stripeUrl}?client_reference_id=${id}&redirect_url=${returnUrl}`;
+      */
 
     } catch (error) {
       console.error("Erreur handleSubmit:", error);

@@ -27,10 +27,10 @@ const Home = () => {
     createInvitation, 
     getSpyReport, 
     verifyPaymentStatus, 
-    getPublicInvitation, // Import crucial pour la Vérité Unique
+    getPublicInvitation, 
     getOwnedInvitations,
     ownedInvitations,
-    saveDraft, // Utilisation de la nouvelle fonction contextuelle
+    saveDraft, 
     recoverDraft
   } = useApp();
 
@@ -115,7 +115,6 @@ const Home = () => {
         const decoded = JSON.parse(atob(stateParam));
         if (decoded.t && decoded.id === paymentId) {
           foundToken = decoded.t;
-          // Note: On ne se fie plus aveuglément à 'p' (plan) du state, on va vérifier la DB
           recoveredData = { sender: decoded.s, valentine: decoded.v };
           repairLocalMemory(paymentId, foundToken, { ...recoveredData, plan: decoded.p });
         }
@@ -124,6 +123,7 @@ const Home = () => {
       }
     }
 
+    // Tentative 1 : Recherche avec l'ID reçu (marche si UUID, échoue si ID Stripe)
     const foundLocal = owned.find(i => i.id === paymentId);
     if (!foundToken && foundLocal) {
         foundToken = foundLocal.token;
@@ -131,29 +131,41 @@ const Home = () => {
     }
 
     // 2. VÉRITÉ UNIQUE : Interrogation immédiate du serveur
-    // On ne fait pas confiance au localStorage pour le statut final
     try {
         const serverData = await getPublicInvitation(paymentId);
         
         if (serverData && serverData.payment_status === 'paid') {
             console.log("✅ Confirmation serveur reçue. Plan:", serverData.plan);
             
+            // --- FIX CRITIQUE : RÉCONCILIATION D'ID (Stripe ID -> UUID) ---
+            // Si paymentId est un ID Stripe (cs_...), on n'a pas trouvé le token à l'étape 1.
+            // On utilise l'ID réel renvoyé par le serveur (serverData.id) pour retrouver le token.
+            if (!foundToken) {
+                const realLocal = owned.find(i => i.id === serverData.id);
+                if (realLocal) {
+                    console.log("🔑 Token retrouvé via UUID:", serverData.id);
+                    foundToken = realLocal.token;
+                }
+            }
+            // -------------------------------------------------------------
+            
             // Mise à jour de la donnée locale avec la vérité serveur
             const finalInvite = {
-                id: paymentId,
+                id: serverData.id, // On force l'UUID réel
                 sender: serverData.sender || recoveredData?.sender || "Vous",
                 valentine: serverData.valentine || recoveredData?.valentine || "...",
-                plan: serverData.plan // C'est ici que la magie opère (Basic -> Spy)
+                plan: serverData.plan // Le plan Spy est ici
             };
 
             // Sauvegarde de la correction
-            repairLocalMemory(paymentId, foundToken, finalInvite);
+            repairLocalMemory(finalInvite.id, foundToken, finalInvite);
 
             displaySuccess(finalInvite, foundToken);
-            verifyBackgroundSilent(paymentId, foundToken);
+            verifyBackgroundSilent(finalInvite.id, foundToken);
         } else {
             // Si pas encore payé en DB (latence Webhook), on attend
-            waitForServerValidation(paymentId, foundLocal || { id: paymentId, ...recoveredData });
+            // On passe l'objet le plus complet possible pour le polling
+            waitForServerValidation(paymentId, { ...recoveredData, id: paymentId });
         }
     } catch (e) {
         console.warn("Erreur fetch serverData, fallback polling", e);
@@ -195,17 +207,27 @@ const Home = () => {
       if (serverData && serverData.payment_status === 'paid') {
         localStorage.removeItem('draft_invitation');
         
+        // --- FIX POLLING : ID RECOVERY ---
+        let finalToken = contextData?.token;
+        if (!finalToken) {
+             // Dernière chance : chercher le token avec le vrai ID serveur
+             const owned = getOwnedInvitations();
+             const realLocal = owned.find(i => i.id === serverData.id);
+             if (realLocal) finalToken = realLocal.token;
+        }
+        // ---------------------------------
+
         const finalData = {
             ...contextData,
-            plan: serverData.plan // La DB a toujours raison
+            id: serverData.id,
+            plan: serverData.plan
         };
         
-        // Si on a le token, on met à jour la mémoire
-        if (contextData?.token) {
-            repairLocalMemory(paymentId, contextData.token, finalData);
+        if (finalToken) {
+            repairLocalMemory(serverData.id, finalToken, finalData);
         }
 
-        displaySuccess(finalData, contextData?.token);
+        displaySuccess(finalData, finalToken);
 
       } else if (attempt < maxAttempts) {
         // Choix du délai adaptatif

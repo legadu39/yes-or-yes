@@ -74,6 +74,32 @@ export const AppProvider = ({ children }) => {
     }
   };
 
+  // --- UTILITAIRE DE MISE A JOUR LOCALSTORAGE ---
+  const updateOwnedInvitations = (invitation) => {
+    setOwnedInvitations(prev => {
+        // Éviter les doublons par ID
+        const filtered = prev.filter(i => i.id !== invitation.id);
+        const updated = [invitation, ...filtered];
+        localStorage.setItem('yesoryes_owned', JSON.stringify(updated));
+        return updated;
+    });
+  };
+
+  // --- FONCTION UTILITAIRE POUR RÉPARATION MÉMOIRE LOCALE ---
+  const repairLocalMemory = (id, token, data) => {
+    const stored = localStorage.getItem('yesoryes_owned') ? JSON.parse(localStorage.getItem('yesoryes_owned')) : [];
+    // On met à jour l'entrée existante ou on en crée une nouvelle
+    const filtered = stored.filter(i => i.id !== id);
+    const newEntry = { id, token, createdAt: new Date().toISOString(), ...data };
+    
+    // On remet l'entrée mise à jour en tête de liste
+    const newList = [newEntry, ...filtered];
+    
+    localStorage.setItem('yesoryes_owned', JSON.stringify(newList));
+    // Mise à jour du state React également pour réactivité immédiate
+    setOwnedInvitations(newList);
+  };
+
   // --- CRÉATION VIA RPC V2 ---
   const createInvitation = async (sender, valentine, plan) => {
     try {
@@ -109,6 +135,7 @@ export const AppProvider = ({ children }) => {
         valentine: valentine.trim(),
         token: newToken, 
         plan: plan,
+        status: 'pending', // Valeur par défaut locale
         createdAt: new Date().toISOString() 
       };
 
@@ -120,30 +147,6 @@ export const AppProvider = ({ children }) => {
       console.error("🚨 Erreur critique création:", error);
       return null;
     }
-  };
-
-  // --- UTILITAIRE DE MISE A JOUR LOCALSTORAGE ---
-  const updateOwnedInvitations = (invitation) => {
-    setOwnedInvitations(prev => {
-        // Éviter les doublons
-        const filtered = prev.filter(i => i.id !== invitation.id);
-        const updated = [invitation, ...filtered];
-        localStorage.setItem('yesoryes_owned', JSON.stringify(updated));
-        return updated;
-    });
-  };
-
-  // --- FONCTION UTILITAIRE POUR RÉPARATION MÉMOIRE LOCALE ---
-  const repairLocalMemory = (id, token, data) => {
-    const stored = localStorage.getItem('yesoryes_owned') ? JSON.parse(localStorage.getItem('yesoryes_owned')) : [];
-    // On met à jour l'entrée existante ou on en crée une nouvelle
-    const filtered = stored.filter(i => i.id !== id);
-    const newEntry = { id, token, createdAt: new Date().toISOString(), ...data };
-    const newList = [newEntry, ...filtered];
-    localStorage.setItem('yesoryes_owned', JSON.stringify(newList));
-    
-    // Mise à jour du state React également
-    setOwnedInvitations(newList);
   };
 
   // --- INTELLIGENCE : RÉCUPÉRATION PAR SESSION STRIPE ---
@@ -180,6 +183,7 @@ export const AppProvider = ({ children }) => {
       if (error) throw error;
       if (!data) return null; 
       
+      // Mapping pour assurer la compatibilité avec le Dashboard
       return { ...data, status: data.game_status };
     } catch (error) {
       console.error("Accès refusé ou erreur rapport espion", error);
@@ -210,6 +214,7 @@ export const AppProvider = ({ children }) => {
       const { data, error } = await supabase.rpc(rpcMethod, rpcParams);
 
       if (error) {
+        // Ignorer l'erreur "row not found" standard
         if (error.code !== 'PGRST116') {
             console.error(`Erreur RPC ${rpcMethod}`, error);
         }
@@ -224,8 +229,16 @@ export const AppProvider = ({ children }) => {
     }
   };
 
+  // --- TRACKING INTELLIGENT (Optimistic UI) ---
   const markAsViewed = async (id) => {
     try {
+      // 1. Protection Anti-Spam Locale (Session Storage)
+      // On évite de spammer la DB si l'utilisateur rafraîchit la page 10 fois
+      const sessionKey = `viewed_${id}`;
+      if (sessionStorage.getItem(sessionKey)) return;
+      sessionStorage.setItem(sessionKey, 'true');
+
+      // 2. Appel RPC
       const { error } = await supabase.rpc('mark_invitation_viewed', { target_id: id });
       if (error) console.error("Erreur markAsViewed", error);
     } catch (e) {
@@ -295,15 +308,24 @@ export const AppProvider = ({ children }) => {
     try {
       const data = await getPublicInvitation(id);
       
-      // INTELLIGENCE UPGRADE : Synchronisation automatique du plan
+      // INTELLIGENCE UPGRADE : Synchronisation complète (Plan + Statut Paiement)
+      // Permet de débloquer l'interface "Basic" -> "Spy" instantanément
       if (data && data.payment_status === 'paid') {
           const owned = getOwnedInvitations();
           const localEntry = owned.find(i => i.id === data.id);
           
-          // Si le plan a changé côté serveur (upgrade détecté), on met à jour local
-          if (localEntry && localEntry.plan !== data.plan) {
-              console.log(`✨ Upgrade détecté : ${localEntry.plan} → ${data.plan}`);
-              repairLocalMemory(data.id, localEntry.token, { ...localEntry, plan: data.plan });
+          if (localEntry) {
+              const hasPlanChanged = localEntry.plan !== data.plan;
+              const hasStatusChanged = localEntry.payment_status !== data.payment_status;
+
+              if (hasPlanChanged || hasStatusChanged) {
+                  console.log(`✨ Sync Etat Paiement/Plan : ${localEntry.plan} → ${data.plan}`);
+                  repairLocalMemory(data.id, localEntry.token, { 
+                      ...localEntry, 
+                      plan: data.plan, 
+                      payment_status: data.payment_status 
+                  });
+              }
           }
       }
       

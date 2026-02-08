@@ -1,8 +1,8 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { supabase } from '../lib/supabaseClient';
-import { Shield, Clock, MousePointer2, CheckCircle2, HeartHandshake, LockKeyhole, Loader2, Ban, Eye, PartyPopper, Lock, Sparkles } from 'lucide-react';
+import { Shield, Clock, MousePointer2, CheckCircle2, HeartHandshake, LockKeyhole, Loader2, Ban, Eye, PartyPopper, Lock, Sparkles, AlertTriangle, RefreshCw } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 const SpyDashboard = () => {
@@ -15,336 +15,359 @@ const SpyDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [accessDenied, setAccessDenied] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState('connecting'); 
+  const [lastRefreshed, setLastRefreshed] = useState(new Date());
   
   const consecutiveErrors = useRef(0);
   const prevDataRef = useRef(null);
+  const pollingIntervalRef = useRef(null);
+  const pageVisibleRef = useRef(true);
 
-  // INTELLIGENCE FREEMIUM : Détection du plan de l'utilisateur
-  const isLocked = data && data.plan === 'basic';
+  // --- INTELLIGENCE : DÉTECTION DU PLAN & STATUT ---
+  // Le plan 'basic' bloque les détails (Logs, Carte), mais PAS le résultat final (Oui/Non)
+  const isBasicPlan = data && data.plan === 'basic';
+  const hasAnswered = data && data.status === 'accepted';
+  const isRejected = data && data.status === 'rejected';
 
-  const fetchInitialData = async () => {
+  // Si c'est basic, on "lock" l'accès aux preuves détaillées, mais pas au dashboard global
+  const areDetailsLocked = isBasicPlan; 
+
+  // --- 1. CHARGEMENT & SMART POLLING ---
+  
+  const fetchData = useCallback(async (isBackgroundRefresh = false) => {
     try {
       const token = searchParams.get('token');
       if (!token) {
           setAccessDenied(true);
           setLoading(false);
-          return null;
+          return;
       }
+
+      if (!isBackgroundRefresh) setLoading(true);
 
       const result = await getSpyReport(id, token);
-      
+
       if (!result) {
-          consecutiveErrors.current++;
-          if (consecutiveErrors.current > 5 && !data) {
-             setAccessDenied(true);
-          }
-          throw new Error("No data returned");
+        consecutiveErrors.current += 1;
+        if (consecutiveErrors.current > 3) {
+            setAccessDenied(true); // Probablement token invalide après plusieurs essais
+        }
+      } else {
+        consecutiveErrors.current = 0;
+        
+        // DÉTECTION DE CHANGEMENT D'ÉTAT (Preuve d'Intelligence)
+        // Si le statut passe de 'pending' à 'accepted' pendant qu'on regarde
+        if (prevDataRef.current && prevDataRef.current.status === 'pending' && result.status === 'accepted') {
+            triggerVictory();
+        }
+
+        setData(result);
+        prevDataRef.current = result;
+        setLastRefreshed(new Date());
+        setConnectionStatus('connected');
       }
-
-      consecutiveErrors.current = 0;
-      updateDataWithEffect(result);
-      setLoading(false);
-      return result;
-      
-    } catch (e) {
-      console.warn("Fetch error:", e.message);
-      setLoading(false);
-      return null;
+    } catch (err) {
+      console.error("Erreur polling spy:", err);
+      setConnectionStatus('error');
+    } finally {
+      if (!isBackgroundRefresh) setLoading(false);
     }
-  };
+  }, [id, searchParams, getSpyReport]);
 
-  const updateDataWithEffect = (newData) => {
-      setData(prev => {
-          if (prev && JSON.stringify(prev) !== JSON.stringify(newData)) {
-              if (newData.status === 'accepted' && prev.status !== 'accepted') {
-                  triggerVictory();
-              }
-              else if (newData.attempts > prev.attempts) {
-                  if (navigator.vibrate) navigator.vibrate(50);
-              }
-              else if (newData.viewed_at && !prev.viewed_at) {
-                  if (navigator.vibrate) navigator.vibrate([50, 50, 50]);
-              }
-          } 
-          else if (!prev && newData.status === 'accepted') {
-             setTimeout(triggerVictory, 500);
-          }
+  // --- 2. CYCLE DE VIE & HEURISTIQUES ---
 
-          prevDataRef.current = prev;
-          return newData;
-      });
-  };
+  useEffect(() => {
+    // Premier chargement
+    fetchData();
+
+    // Configuration de la visibilité (Réveil Intelligent)
+    const handleVisibilityChange = () => {
+      pageVisibleRef.current = !document.hidden;
+      if (!document.hidden) {
+        console.log("👁️ Utilisateur de retour : Rafraîchissement immédiat");
+        fetchData(true); // Refresh silencieux
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // Algorithme de Polling Adaptatif
+    // Si pas de réponse : Check toutes les 5s (pression haute)
+    // Si réponse obtenue : Check toutes les 60s (juste pour updates mineures)
+    const intervalDuration = (data && data.status === 'pending') ? 5000 : 60000;
+
+    pollingIntervalRef.current = setInterval(() => {
+      if (pageVisibleRef.current) {
+        fetchData(true);
+      }
+    }, intervalDuration);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
+    };
+  }, [fetchData, data?.status]); // Recrée l'intervalle si le statut change
+
+  // --- 3. EFFETS VISUELS ---
 
   const triggerVictory = () => {
-    if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 500]);
-    
     const duration = 3000;
     const end = Date.now() + duration;
 
     const frame = () => {
-      confetti({ particleCount: 5, angle: 60, spread: 55, origin: { x: 0 }, colors: ['#D24D57', '#B76E79', '#FFFDD0'] });
-      confetti({ particleCount: 5, angle: 120, spread: 55, origin: { x: 1 }, colors: ['#D24D57', '#B76E79', '#FFFDD0'] });
-      if (Date.now() < end) requestAnimationFrame(frame);
+      confetti({
+        particleCount: 5,
+        angle: 60,
+        spread: 55,
+        origin: { x: 0 },
+        colors: ['#D24D57', '#E0B0B6', '#FFD700']
+      });
+      confetti({
+        particleCount: 5,
+        angle: 120,
+        spread: 55,
+        origin: { x: 1 },
+        colors: ['#D24D57', '#E0B0B6', '#FFD700']
+      });
+
+      if (Date.now() < end) {
+        requestAnimationFrame(frame);
+      }
     };
     frame();
   };
 
-  useEffect(() => {
-    // Détection retour après upgrade
-    const upgradeSuccess = searchParams.get('upgrade');
-    if (upgradeSuccess === 'success') {
-        // Message de félicitations transitoire
-        const timer = setTimeout(() => {
-            // On retire le paramètre de l'URL pour ne pas re-afficher le message
-            const newUrl = window.location.pathname + '?token=' + searchParams.get('token');
-            window.history.replaceState({}, '', newUrl);
-        }, 5000);
-        return () => clearTimeout(timer);
-    }
+  const copyLink = () => {
+    if (!data) return;
+    const link = `${window.location.origin}/v/${data.id}`;
+    navigator.clipboard.writeText(link);
+    alert("Lien copié ! Envoyez-le à votre Valentine.");
+  };
 
-    fetchInitialData();
+  // --- RENDU ---
 
-    const channel = supabase
-      .channel(`invitation-${id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'invitations',
-          filter: `id=eq.${id}`,
-        },
-        (payload) => {
-          console.log("⚡ Realtime Update:", payload.new);
-          const adapted = { ...payload.new, status: payload.new.game_status };
-          updateDataWithEffect(adapted);
-        }
-      )
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          setConnectionStatus('live');
-        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          setConnectionStatus('polling');
-        }
-      });
-
-    const interval = setInterval(async () => {
-        await fetchInitialData();
-    }, 30000);
-
-    return () => {
-      supabase.removeChannel(channel);
-      clearInterval(interval);
-    };
-  }, [id]);
-
-  if (loading) return (
-    <div className="min-h-screen bg-ruby-dark flex items-center justify-center">
-        <Loader2 className="w-8 h-8 text-rose-gold animate-spin" />
-    </div>
-  );
-
-  if (accessDenied) return (
-    <div className="min-h-screen bg-ruby-dark flex flex-col items-center justify-center p-6 text-center">
-        <div className="bg-ruby-dark/50 border border-rose-gold/30 p-8 rounded-xl backdrop-blur-md max-w-md w-full shadow-2xl">
-            <Ban className="w-16 h-16 text-rose-gold mx-auto mb-4" />
-            <h2 className="text-2xl text-rose-pale font-serif mb-2">Accès Interdit</h2>
-            <p className="text-cream/70 mb-6 font-light">
-                Paiement en attente ou lien invalide.<br/>
-                Veuillez finaliser votre commande.
-            </p>
-            <button 
-                onClick={() => navigate('/')}
-                className="btn-ruby py-3 px-6 rounded-lg text-sm uppercase tracking-widest w-full"
-            >
-                Retourner à la base
-            </button>
+  if (loading && !data) {
+    return (
+      <div className="min-h-screen bg-ruby-dark flex items-center justify-center text-rose-pale">
+        <div className="text-center">
+          <Loader2 className="animate-spin mx-auto mb-4 text-rose-gold" size={48} />
+          <p className="font-serif animate-pulse">Établissement de la liaison sécurisée...</p>
         </div>
-    </div>
-  );
+      </div>
+    );
+  }
 
-  if (!data) return null;
+  if (accessDenied) {
+    return (
+      <div className="min-h-screen bg-ruby-dark flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-black/40 border border-ruby-light/30 p-8 rounded-xl backdrop-blur-md text-center">
+          <Ban className="mx-auto text-ruby-light mb-4" size={64} />
+          <h1 className="text-2xl font-serif text-rose-pale mb-2">Accès Refusé</h1>
+          <p className="text-rose-pale/60 mb-6">Ce lien de surveillance est invalide ou a expiré.</p>
+          <button onClick={() => navigate('/')} className="px-6 py-2 bg-rose-gold text-ruby-dark font-bold rounded-full hover:bg-white transition-colors">
+            Retour à l'accueil
+          </button>
+        </div>
+      </div>
+    );
+  }
 
-  const attempts = data.attempts || 0;
-  const time = parseFloat(data.hesitation_time) || 0;
+  // Calculs pour les KPIs
+  const totalViews = data?.logs?.filter(l => l.action === 'viewed').length || 0;
+  const totalClicks = data?.logs?.filter(l => l.action.includes('click')).length || 0;
   
-  const calculateSmartScore = () => {
-    let rawScore = 100;
-    if (attempts > 0 && attempts <= 3) rawScore -= (attempts * 15); 
-    if (attempts > 3 && attempts <= 10) rawScore -= (3 * 15) + ((attempts - 3) * 5); 
-    if (attempts > 10) rawScore = 85; 
-    if (attempts < 5) rawScore -= (time * 0.5);
-    if (attempts > 15) return 100; 
+  // Score d'intérêt (Heuristique simple)
+  let interestScore = 0;
+  if (data) {
+      interestScore += totalViews * 10;
+      interestScore += totalClicks * 20;
+      if (hasAnswered) interestScore = 100;
+      if (interestScore > 100) interestScore = 100;
+  }
 
-    return Math.min(100, Math.max(0, Math.floor(rawScore)));
+  // Profil psychologique
+  const getProfile = () => {
+      if (hasAnswered) return { title: "CONQUISE", desc: "Elle a succombé. Préparez votre soirée." };
+      if (isRejected) return { title: "CŒUR DE PIERRE", desc: "Mission échouée. On ne gagne pas à tous les coups." };
+      if (interestScore > 50) return { title: "INTÉRESSÉE", desc: "Elle hésite, revient, analyse... C'est bon signe." };
+      if (totalViews > 0) return { title: "CURIEUSE", desc: "Elle a ouvert, mais reste prudente." };
+      return { title: "EN ATTENTE", desc: "Aucune interaction détectée pour le moment." };
   };
-
-  const getPsychologicalProfile = () => {
-    if (data.status === 'accepted') {
-        if (attempts === 0) return { title: "Le Coup de Foudre", desc: "Elle a dit OUI immédiatement. Aucune hésitation détectée. L'évidence même." };
-        if (attempts > 15) return { title: "La Joueuse", desc: "Elle adore le défi et vous faire désirer. Un 'OUI' passionné caché derrière un jeu du chat et de la souris." };
-        if (time > 30 && attempts < 5) return { title: "La Stratège", desc: "Intérêt confirmé mais prudent. Elle a pris le temps de peser le pour et le contre avant de s'engager." };
-        if (time < 10 && attempts > 5) return { title: "L'Impulsive", desc: "Réaction vive et amusée ! Elle a tenté de fuir par réflexe mais l'envie était trop forte." };
-        return { title: "L'Équilibrée", desc: "Un mélange sain de jeu et de sincérité. Une conquête validée avec succès." };
-    } 
-    
-    if (data.viewed_at && data.status === 'pending') {
-        const viewedTime = new Date(data.viewed_at);
-        const now = new Date();
-        const diffMinutes = (now - viewedTime) / 1000 / 60;
-        
-        if (diffMinutes > 5) return { title: "Le Fantôme ?", desc: "Elle a ouvert la lettre il y a plus de 5 minutes sans répondre. Suspense insoutenable..." };
-        return { title: "Lecture en cours...", desc: "Elle est devant l'écran en ce moment même. Chut !" };
-    }
-    
-    return { title: "En attente", desc: "Le message n'a pas encore été ouvert." };
-  };
-
-  const normalizedScore = calculateSmartScore();
-  const profile = getPsychologicalProfile();
-  const hesitationsDisplay = time.toFixed(1);
-
-  // LIEN UPGRADE STRIPE
-  const handleUpgrade = () => {
-    const token = searchParams.get('token');
-    const upgradeUrl = `https://buy.stripe.com/8x28wOcc6gFRfpAdk76Vq02?client_reference_id=${id}&redirect_url=${encodeURIComponent(window.location.origin + `/spy/${id}?token=${token}&upgrade=success`)}`;
-    window.location.href = upgradeUrl;
-  };
-
-  // Message de félicitations après upgrade
-  const showUpgradeSuccess = searchParams.get('upgrade') === 'success';
+  const profile = getProfile();
 
   return (
-    <div className="min-h-screen p-6 font-serif text-cream selection:bg-ruby-light selection:text-cream flex justify-center items-center relative z-10">
-      <div className="max-w-3xl w-full border border-rose-gold/30 bg-ruby-dark/60 backdrop-blur-xl rounded-xl overflow-hidden shadow-[0_0_50px_rgba(106,15,32,0.5)] relative animate-fade-in">
+    <div className="min-h-screen bg-fixed bg-cover bg-center relative font-sans text-rose-pale overflow-x-hidden"
+         style={{ backgroundImage: `url('https://images.unsplash.com/photo-1518199266791-5375a83190b7?q=80&w=2940&auto=format&fit=crop')` }}>
+      
+      {/* Overlay Sombre */}
+      <div className="absolute inset-0 bg-ruby-dark/90 backdrop-blur-sm"></div>
+
+      <div className="relative z-10 container mx-auto px-4 py-8 max-w-5xl">
         
-        <header className="bg-ruby-dark/80 p-6 border-b border-rose-gold/20 flex justify-between items-center relative overflow-hidden">
-            <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/aged-paper.png')] opacity-10 mix-blend-overlay pointer-events-none"></div>
-            <div className="flex items-center gap-4 relative z-10">
-                <div className="p-3 bg-ruby-DEFAULT/30 rounded-full border border-rose-gold/30 shadow-[0_0_15px_rgba(183,110,121,0.2)]">
-                    <LockKeyhole className="text-rose-gold w-6 h-6" />
-                </div>
-                <div>
-                    <h1 className="text-rose-pale text-2xl font-script">Carnet Secret</h1>
-                    <p className="text-xs text-rose-gold/70 uppercase tracking-widest flex items-center gap-2">
-                        {isLocked ? 'Version Essentiel' : 'Confidentiel'} <span className="w-1 h-1 bg-rose-gold/50 rounded-full"></span> ID: {data.id.substring(0, 6)}
-                    </p>
+        {/* Header de Statut */}
+        <header className="mb-8 flex flex-col md:flex-row justify-between items-center gap-4 border-b border-rose-gold/20 pb-6">
+            <div>
+                <h1 className="text-3xl md:text-4xl font-serif text-transparent bg-clip-text bg-gradient-to-r from-rose-gold to-rose-pale mb-2">
+                    Rapport de Surveillance
+                </h1>
+                <div className="flex items-center gap-2 text-sm text-rose-pale/60">
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border ${connectionStatus === 'connected' ? 'border-green-500/30 text-green-400 bg-green-500/10' : 'border-yellow-500/30 text-yellow-400 bg-yellow-500/10'}`}>
+                        <div className={`w-1.5 h-1.5 rounded-full ${connectionStatus === 'connected' ? 'bg-green-500 animate-pulse' : 'bg-yellow-500'}`}></div>
+                        {connectionStatus === 'connected' ? 'LIVE' : 'RECONNECTING'}
+                    </span>
+                    <span className="hidden md:inline">• ID: {id}</span>
+                    <span>• MàJ: {lastRefreshed.toLocaleTimeString()}</span>
                 </div>
             </div>
-            <div className={`hidden sm:flex px-4 py-1 border text-xs rounded-full items-center gap-2 tracking-wider shadow-sm transition-colors ${
-                connectionStatus === 'live' 
-                ? 'border-ruby-light/50 text-ruby-light bg-ruby-light/10' 
-                : 'border-orange-500/50 text-orange-400 bg-orange-500/10'
-            }`}>
-                <div className={`w-2 h-2 rounded-full ${connectionStatus === 'live' ? 'bg-ruby-light animate-pulse' : 'bg-orange-400'}`}></div> 
-                {connectionStatus === 'live' ? 'LIVE FEED' : 'SYNC...'}
-            </div>
+            
+            {/* Bouton Upgrade si Basic */}
+            {isBasicPlan && (
+                <a href="https://buy.stripe.com/8x28wOcc6gFRfpAdk76Vq02" target="_blank" rel="noreferrer" 
+                   className="group flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-amber-600 to-yellow-600 rounded-lg font-bold text-white shadow-lg hover:scale-105 transition-transform">
+                    <LockKeyhole size={18} />
+                    <span>Débloquer Tout (1€)</span>
+                    <Sparkles size={16} className="group-hover:animate-spin" />
+                </a>
+            )}
         </header>
 
-        <div className="p-8 relative">
-             <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/aged-paper.png')] opacity-5 mix-blend-overlay pointer-events-none"></div>
+        {/* --- ZONE PRINCIPALE : STATUT VITAL --- 
+            CETTE ZONE EST TOUJOURS VISIBLE, MÊME EN BASIC (Correction UX) 
+        */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             
-            {/* Message de félicitations après upgrade */}
-            {showUpgradeSuccess && (
-                <div className="mb-6 p-4 bg-green-900/20 border border-green-500/30 rounded-lg text-center animate-fade-in">
-                    <Sparkles className="w-6 h-6 text-green-400 mx-auto mb-2" />
-                    <p className="text-green-400 font-medium">🎉 Votre carnet secret est désormais débloqué !</p>
+            {/* CARTE 1 : Statut Global */}
+            <div className={`col-span-1 md:col-span-3 p-6 rounded-2xl border backdrop-blur-md shadow-2xl transition-all duration-500
+                ${hasAnswered 
+                    ? 'bg-gradient-to-br from-green-900/40 to-emerald-900/40 border-green-500/50 shadow-[0_0_30px_rgba(16,185,129,0.2)]' 
+                    : isRejected
+                        ? 'bg-gradient-to-br from-gray-900/80 to-black border-gray-600/50'
+                        : 'bg-black/40 border-rose-gold/20'
+                }`}>
+                
+                <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+                    <div className="flex items-center gap-6">
+                        <div className={`p-4 rounded-full border-2 ${hasAnswered ? 'border-green-400 bg-green-500/20 text-green-400' : 'border-rose-gold/30 bg-rose-gold/10 text-rose-gold'}`}>
+                            {hasAnswered ? <PartyPopper size={48} /> : isRejected ? <Ban size={48} /> : <Loader2 size={48} className="animate-spin-slow" />}
+                        </div>
+                        <div>
+                            <h2 className="text-xl text-rose-pale/60 font-serif tracking-widest uppercase mb-1">Statut de la mission</h2>
+                            <div className="text-4xl md:text-5xl font-bold text-white font-serif">
+                                {hasAnswered 
+                                    ? <span className="text-transparent bg-clip-text bg-gradient-to-r from-green-300 to-emerald-500">ELLE A DIT OUI !</span>
+                                    : isRejected 
+                                        ? "REFUS CATÉGORIQUE"
+                                        : "EN ATTENTE..."
+                                }
+                            </div>
+                            {hasAnswered && isBasicPlan && (
+                                <p className="mt-2 text-green-300/80 text-sm flex items-center gap-2">
+                                    <CheckCircle2 size={14} /> Réponse confirmée. Bravo soldat.
+                                </p>
+                            )}
+                        </div>
+                    </div>
+                    
+                    {/* Lien à partager (Toujours accessible) */}
+                    <div className="w-full md:w-auto bg-black/50 p-4 rounded-lg border border-white/10 max-w-sm">
+                        <p className="text-xs text-rose-pale/50 uppercase tracking-widest mb-2 flex items-center gap-2">
+                            <Sparkles size={12} className="text-yellow-500" />
+                            Lien de la cible
+                        </p>
+                        <div className="flex gap-2">
+                            <code className="flex-1 bg-black/50 px-3 py-2 rounded text-sm text-rose-gold font-mono truncate border border-rose-gold/10">
+                                {`${window.location.origin}/v/${id}`}
+                            </code>
+                            <button onClick={copyLink} className="p-2 hover:bg-rose-gold/20 rounded-md transition-colors text-rose-gold">
+                                <RefreshCw size={18} />
+                            </button>
+                        </div>
+                    </div>
                 </div>
-            )}
+            </div>
+        </div>
 
-            <div className="mb-12 text-center relative z-10">
-                {data.status === 'accepted' ? (
-                   <div className="animate-float">
-                      <span className="text-xs uppercase text-green-400 tracking-[0.3em] block mb-3 font-bold flex items-center justify-center gap-2">
-                         <PartyPopper size={16} /> Mission Accomplie <PartyPopper size={16} />
-                      </span>
-                      <h2 className="text-5xl md:text-7xl font-script text-rose-pale mb-6 drop-shadow-[0_0_15px_rgba(255,255,255,0.3)]">
-                        Elle a dit <span className="text-ruby-light relative inline-block">OUI !</span>
-                      </h2>
-                      <div className="inline-flex items-center gap-2 font-medium tracking-wide px-6 py-3 rounded-full border border-green-500/50 bg-green-900/30 text-green-400 shadow-[0_0_20px_rgba(34,197,94,0.2)]">
-                          <CheckCircle2 size={20} />
-                          INVITATION ACCEPTÉE
-                      </div>
-                   </div>
-                ) : (
-                   <>
-                      <span className="text-xs uppercase text-rose-gold/60 tracking-[0.3em] block mb-3">Sujet de l'observation</span>
-                      <h2 className="text-5xl font-script text-cream mb-4 drop-shadow-md">{data.valentine}</h2>
-                      <div className={`inline-flex items-center gap-2 font-medium tracking-wide px-4 py-2 rounded-lg border transition-colors duration-500 ${data.viewed_at ? 'bg-orange-900/20 border-orange-500/30 text-orange-400' : 'bg-ruby-light/10 border-ruby-light/20 text-ruby-light'}`}>
-                          <Eye size={18} />
-                          {data.viewed_at ? 'STATUT : VU (HÉSITATION...)' : 'STATUT : NON LU'}
-                      </div>
-                   </>
-                )}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            
+            {/* COLONNE GAUCHE : Logs Détaillés */}
+            <div className="lg:col-span-2 space-y-6">
+                
+                {/* Section Logs - FLOUTÉE SI BASIC */}
+                <div className="relative group">
+                    <div className={`bg-black/30 border border-rose-gold/10 rounded-2xl p-6 backdrop-blur-sm overflow-hidden ${areDetailsLocked ? 'blur-sm select-none opacity-50' : ''}`}>
+                        <div className="flex items-center gap-3 mb-6">
+                            <Clock className="text-rose-gold" size={20} />
+                            <h3 className="text-xl font-serif">Journal d'Activité</h3>
+                        </div>
+
+                        <div className="space-y-4">
+                            {!data?.logs || data.logs.length === 0 ? (
+                                <div className="text-center py-8 text-rose-pale/30 italic border border-dashed border-rose-pale/10 rounded-lg">
+                                    Aucune activité détectée pour l'instant...
+                                </div>
+                            ) : (
+                                data.logs.slice().reverse().map((log, index) => (
+                                    <div key={index} className="flex items-start gap-4 p-3 hover:bg-white/5 rounded-lg transition-colors border-l-2 border-rose-gold/20">
+                                        <div className="mt-1">
+                                            {log.action === 'viewed' && <Eye size={16} className="text-blue-400" />}
+                                            {log.action === 'clicked_yes' && <HeartHandshake size={16} className="text-green-400" />}
+                                            {log.action === 'clicked_no' && <Ban size={16} className="text-red-400" />}
+                                            {log.action.includes('music') && <Sparkles size={16} className="text-yellow-400" />}
+                                        </div>
+                                        <div className="flex-1">
+                                            <p className="text-sm font-medium text-rose-pale">
+                                                {log.action === 'viewed' && "A ouvert l'invitation"}
+                                                {log.action === 'clicked_yes' && "A cliqué sur OUI"}
+                                                {log.action === 'clicked_no' && "A essayé de fuir (Bouton Non)"}
+                                                {log.action === 'music_started' && "A activé la musique"}
+                                            </p>
+                                            <p className="text-xs text-rose-pale/40 font-mono mt-1">
+                                                {new Date(log.timestamp).toLocaleString()} • IP: {log.ip || 'Masquée'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+
+                    {/* OVERLAY DE BLOCAGE (Si Basic) */}
+                    {areDetailsLocked && (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center z-10">
+                            <div className="bg-black/80 border border-amber-500/30 p-8 rounded-2xl text-center shadow-2xl max-w-sm backdrop-blur-xl transform transition-transform hover:scale-105">
+                                <Lock className="mx-auto text-amber-500 mb-4" size={48} />
+                                <h3 className="text-xl font-bold text-white mb-2">Preuves Classifiées</h3>
+                                <p className="text-rose-pale/70 text-sm mb-6">
+                                    Vous avez le statut de la mission (OUI/NON), mais les détails techniques (Heures précises, IP, Tentatives de fuite) sont réservés aux agents SPY.
+                                </p>
+                                <a href="https://buy.stripe.com/8x28wOcc6gFRfpAdk76Vq02" target="_blank" rel="noreferrer" 
+                                   className="inline-block w-full py-3 bg-gradient-to-r from-amber-600 to-yellow-600 rounded-lg font-bold text-white shadow-lg hover:brightness-110 transition-all">
+                                    Débloquer pour 1€
+                                </a>
+                            </div>
+                        </div>
+                    )}
+                </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10">
+            {/* COLONNE DROITE : Analyse IA & Profil */}
+            <div className="space-y-6">
                 
-                {/* CARTES STATISTIQUES AVEC FLOU CONDITIONNEL */}
-                <div className={`bg-ruby-dark/40 p-6 rounded-lg border border-rose-gold/10 hover:border-rose-gold/40 transition-all hover:bg-ruby-dark/60 group relative ${isLocked ? 'blur-md' : ''}`}>
-                    <div className="flex justify-between items-start mb-4">
-                        <MousePointer2 className="text-rose-gold/50 w-5 h-5 group-hover:text-rose-gold transition-colors" />
-                        <span className="text-xs font-medium text-rose-pale uppercase tracking-wider">Tentatives d'esquive</span>
-                    </div>
-                    <div className="text-4xl text-cream font-light mb-1">{data.attempts}</div>
-                    <div className="text-xs text-cream/50 italic">Clics sur le bouton "Non"</div>
-                </div>
-
-                <div className={`bg-ruby-dark/40 p-6 rounded-lg border border-rose-gold/10 hover:border-rose-gold/40 transition-all hover:bg-ruby-dark/60 group relative ${isLocked ? 'blur-md' : ''}`}>
-                    <div className="flex justify-between items-start mb-4">
-                        <Clock className="text-rose-gold/50 w-5 h-5 group-hover:text-rose-gold transition-colors" />
-                        <span className="text-xs font-medium text-rose-pale uppercase tracking-wider">Temps d'hésitation</span>
-                    </div>
-                    <div className="text-4xl text-cream font-light mb-1">{hesitationsDisplay}s</div>
-                    <div className="text-xs text-cream/50 italic">Avant acceptation finale</div>
-                </div>
-
-                {/* PROFIL PSYCHOLOGIQUE : Remplacement conditionnel */}
-                {isLocked ? (
-                    // VERSION VERROUILLÉE : Bandeau Upsell
-                    <div className="col-span-1 md:col-span-2 bg-gradient-to-br from-purple-900/40 to-ruby-dark/60 p-8 rounded-lg border-2 border-purple-500/30 mt-4 relative overflow-hidden">
-                        <div className="absolute top-0 right-0 p-4 opacity-20">
-                            <Lock size={80} className="text-purple-400" />
+                {/* Carte Profil - FLOUTÉE SI BASIC */}
+                <div className="relative">
+                    <div className={`bg-gradient-to-b from-ruby-light/10 to-black/40 border border-rose-gold/20 rounded-2xl p-6 ${areDetailsLocked ? 'blur-sm opacity-50' : ''}`}>
+                        <div className="flex items-center gap-3 mb-4">
+                            <Shield className="text-rose-gold" size={20} />
+                            <h3 className="text-lg font-serif">Analyse Tactique</h3>
                         </div>
                         
-                        <div className="text-center relative z-10">
-                            <h3 className="text-purple-300 text-xl font-script mb-3 flex items-center justify-center gap-2">
-                                <Sparkles size={20} /> Analyse Psychologique Complète
-                            </h3>
-                            <p className="text-cream/70 text-sm mb-6 italic">
-                                Découvrez son profil émotionnel détaillé, ses véritables intentions et le score de passion exact.
-                            </p>
-                            
-                            <button
-                                onClick={handleUpgrade}
-                                className="inline-flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-purple-600 to-rose-gold text-cream font-bold text-lg rounded-full shadow-[0_0_30px_rgba(147,51,234,0.4)] hover:shadow-[0_0_50px_rgba(147,51,234,0.6)] transition-all border border-purple-400/50"
-                            >
-                                <Lock size={18} />
-                                Débloquer pour 1€
-                            </button>
-                            
-                            <p className="text-purple-300/50 text-xs mt-4">Paiement sécurisé • Accès immédiat</p>
-                        </div>
-                    </div>
-                ) : (
-                    // VERSION COMPLÈTE : Analyse débloquée
-                    <div className="col-span-1 md:col-span-2 bg-gradient-to-r from-ruby-dark/60 to-[#2C050D] p-8 rounded-lg border border-rose-gold/20 mt-4 relative overflow-hidden">
-                        <div className="absolute top-0 right-0 p-4 opacity-10">
-                            <Shield size={100} className="text-rose-gold" />
-                        </div>
-                        
-                        <h3 className="text-rose-gold text-sm font-medium uppercase tracking-widest mb-6 flex items-center gap-2 relative z-10">
-                            <HeartHandshake size={16} /> Synthèse Romantique
-                        </h3>
-                        
-                        <div className="space-y-6 relative z-10">
+                        <div className="space-y-6">
                             <div>
-                                <div className="flex justify-between text-xs mb-2 text-cream/70 tracking-wider">
-                                    <span>Indice de Passion (IA Scoring)</span>
-                                    <span>{normalizedScore}/100</span>
+                                <div className="flex justify-between text-xs uppercase tracking-widest text-rose-pale/60 mb-2">
+                                    <span>Score d'Intérêt</span>
+                                    <span>{Math.round(interestScore)}%</span>
                                 </div>
                                 <div className="w-full bg-ruby-dark/80 h-2 rounded-full overflow-hidden border border-rose-gold/10">
-                                    <div className="h-full bg-gradient-to-r from-rose-gold to-ruby-light shadow-[0_0_10px_rgba(210,77,87,0.5)] transition-all duration-1000" style={{width: `${normalizedScore}%`}}></div>
+                                    <div className="h-full bg-gradient-to-r from-rose-gold to-ruby-light shadow-[0_0_10px_rgba(210,77,87,0.5)] transition-all duration-1000" style={{width: `${interestScore}%`}}></div>
                                 </div>
                             </div>
                             
@@ -354,14 +377,37 @@ const SpyDashboard = () => {
                                     {profile.desc}
                                 </p>
                             </div>
+
+                            {/* Stats Grid */}
+                            <div className="grid grid-cols-2 gap-3 mt-4">
+                                <div className="bg-black/40 p-3 rounded-lg border border-white/5 text-center">
+                                    <div className="text-2xl font-bold text-white">{totalViews}</div>
+                                    <div className="text-[10px] uppercase text-rose-pale/40">Vues</div>
+                                </div>
+                                <div className="bg-black/40 p-3 rounded-lg border border-white/5 text-center">
+                                    <div className="text-2xl font-bold text-white">{totalClicks}</div>
+                                    <div className="text-[10px] uppercase text-rose-pale/40">Clics</div>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                )}
+
+                    {/* OVERLAY (Si Basic) - Copie simplifiée pour ne pas surcharger */}
+                    {areDetailsLocked && (
+                        <div className="absolute inset-0 z-10 cursor-not-allowed" title="Contenu réservé aux membres Spy"></div>
+                    )}
+                </div>
+
+                {/* Section Support */}
+                <div className="bg-rose-gold/5 border border-rose-gold/10 rounded-xl p-4 text-center">
+                    <p className="text-xs text-rose-pale/60 mb-2">Un problème avec le rapport ?</p>
+                    <a href="mailto:support@yesoryes.com" className="text-xs text-rose-gold hover:underline">Contacter le QG</a>
+                </div>
 
             </div>
         </div>
         
-         <footer className="p-4 border-t border-rose-gold/10 text-center relative z-10 bg-ruby-dark/80">
+         <footer className="mt-12 p-4 border-t border-rose-gold/10 text-center relative z-10">
             <button 
                 onClick={() => navigate('/')}
                 className="text-rose-gold/60 hover:text-rose-gold text-xs uppercase tracking-[0.2em] transition-colors"

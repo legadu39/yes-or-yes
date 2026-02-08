@@ -2,7 +2,11 @@ import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { supabase } from '../lib/supabaseClient';
-import { Shield, Clock, MousePointer2, CheckCircle2, HeartHandshake, LockKeyhole, Loader2, Ban, Eye, PartyPopper, Lock, Sparkles, AlertTriangle, RefreshCw } from 'lucide-react';
+import { 
+  Shield, Clock, MousePointer2, CheckCircle2, HeartHandshake, 
+  LockKeyhole, Loader2, Ban, Eye, PartyPopper, Lock, Sparkles, 
+  AlertTriangle, RefreshCw, Timer 
+} from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 const SpyDashboard = () => {
@@ -107,7 +111,7 @@ const SpyDashboard = () => {
     };
   }, [fetchData, data?.status]); // Recrée l'intervalle si le statut change
 
-  // --- 3. EFFETS VISUELS ---
+  // --- 3. EFFETS VISUELS & HELPERS ---
 
   const triggerVictory = () => {
     const duration = 3000;
@@ -143,6 +147,14 @@ const SpyDashboard = () => {
     alert("Lien copié ! Envoyez-le à votre Valentine.");
   };
 
+  const getHesitationText = (ms) => {
+    if (!ms && ms !== 0) return "En cours...";
+    if (ms < 1500) return "⚡️ Coup de foudre";
+    if (ms < 5000) return "🤔 Légère réflexion";
+    if (ms < 10000) return "😰 Hésitation marquée";
+    return "😱 Doute existentiel";
+  };
+
   // --- RENDU ---
 
   if (loading && !data) {
@@ -174,6 +186,8 @@ const SpyDashboard = () => {
   // Calculs pour les KPIs
   const totalViews = data?.logs?.filter(l => l.action === 'viewed').length || 0;
   const totalClicks = data?.logs?.filter(l => l.action.includes('click')).length || 0;
+  // Récupération du temps d'hésitation (si disponible dans le rapport)
+  const hesitationTime = data?.hesitation_time || 0;
   
   // Score d'intérêt (Heuristique simple)
   let interestScore = 0;
@@ -231,7 +245,7 @@ const SpyDashboard = () => {
         </header>
 
         {/* --- ZONE PRINCIPALE : STATUT VITAL --- 
-            CETTE ZONE EST TOUJOURS VISIBLE, MÊME EN BASIC (Correction UX) 
+            CETTE ZONE EST TOUJOURS VISIBLE, MÊME EN BASIC
         */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             
@@ -371,6 +385,25 @@ const SpyDashboard = () => {
                                 </div>
                             </div>
                             
+                            {/* --- NOUVEAU BLOC HÉSITATION (INJECTION CHIRURGICALE) --- */}
+                            <div className="flex items-center gap-3 bg-white/5 p-3 rounded-lg border border-white/5">
+                                <div className="p-2 bg-rose-gold/20 rounded-full">
+                                    <Timer className="w-5 h-5 text-rose-gold" />
+                                </div>
+                                <div>
+                                    <p className="text-[10px] uppercase text-rose-pale/40">Temps de Réaction</p>
+                                    <div className="flex items-baseline gap-2">
+                                        <span className="text-xl font-bold text-white">
+                                            {(hesitationTime / 1000).toFixed(1)}s
+                                        </span>
+                                        <span className="text-xs text-rose-gold italic">
+                                            {getHesitationText(hesitationTime)}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                            {/* --- FIN BLOC --- */}
+
                             <div className="border-l-2 border-ruby-light pl-4 py-2 bg-ruby-light/5 rounded-r-lg">
                                 <h4 className="text-rose-pale font-serif text-lg mb-1">{profile.title}</h4>
                                 <p className="text-sm text-cream/80 font-light italic leading-relaxed">

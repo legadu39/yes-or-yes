@@ -1,36 +1,41 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import confetti from 'canvas-confetti';
 import html2canvas from 'html2canvas';
-import { useApp } from '../context/AppContext';
 import { Share2, Heart, Sparkles, ArrowRight, Copy, Download, Loader2 } from 'lucide-react';
 
 const Accepted = () => {
-  const { getInvitation } = useApp();
   const navigate = useNavigate();
+  const location = useLocation();
   const [invitation, setInvitation] = useState(null);
   const [copied, setCopied] = useState(false);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const cardRef = useRef(null);
 
-  // Tentative de récupération ID depuis l'URL locale si context vide (pour la résilience au refresh)
-  const currentInvitationId = window.location.pathname.split('/').pop() === 'accepted' ? localStorage.getItem('last_viewed_invite') : null;
-
   useEffect(() => {
-    // Récupération sécurisée des données pour l'affichage de la victoire
-    const recoverData = async () => {
-        const localInvites = JSON.parse(localStorage.getItem('yesoryes_invitations') || '[]');
-        // Trouver la plus récente acceptée pour l'affichage immédiat
-        const lastAccepted = localInvites.filter(i => i.status === 'accepted').pop();
-        
-        if (lastAccepted) {
-            setInvitation(lastAccepted);
-            triggerCelebration();
-        } 
-    };
-
-    recoverData();
-  }, [navigate]);
+    // 1. Priorité à l'état passé par la navigation (React Router)
+    if (location.state && location.state.invitation) {
+        setInvitation(location.state.invitation);
+        triggerCelebration();
+    } 
+    // 2. Fallback : Si on refresh la page, on cherche dans le localStorage spécifique 'last_accepted_invitation'
+    else {
+        const saved = localStorage.getItem('last_accepted_invitation');
+        if (saved) {
+            try {
+                setInvitation(JSON.parse(saved));
+                triggerCelebration();
+            } catch (e) {
+                console.error("Erreur lecture sauvegarde", e);
+                navigate('/');
+            }
+        } else {
+            // Si aucune donnée (ni state, ni local), redirection vers l'accueil
+            console.warn("Aucune donnée d'invitation trouvée, retour accueil.");
+            navigate('/');
+        }
+    }
+  }, [location, navigate]);
 
   const triggerCelebration = () => {
     // 1. Lancement des Confettis (Version Canvas optimisée)
@@ -121,7 +126,7 @@ const Accepted = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center overflow-hidden relative z-10">
+    <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center overflow-hidden relative z-10 animate-fade-in">
       
       {/* Conteneur Principal avec Animation Flottante - Cible de capture */}
       <div ref={cardRef} className="card-valentine p-12 max-w-2xl w-full relative animate-float border-rose-gold/30 bg-ruby-dark/90 backdrop-blur-xl">

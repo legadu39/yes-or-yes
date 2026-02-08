@@ -232,6 +232,10 @@ const ValentinePage = () => {
         id: invitation.id, 
         time: Date.now() 
     }));
+    
+    // ⚠️ SAUVEGARDE POUR LA PAGE ACCEPTED (FIX BUG ÉCRAN ROUGE)
+    // On sauvegarde les données d'affichage pour que la page suivante puisse les lire
+    localStorage.setItem('last_accepted_invitation', JSON.stringify(invitation));
 
     // 2. Effets visuels (Confetti)
     const duration = 2500;
@@ -251,7 +255,8 @@ const ValentinePage = () => {
     
     // 4. Navigation différée pour profiter du moment
     setTimeout(() => {
-        navigate('/accepted');
+        // On passe aussi l'objet en state pour une transition instantanée
+        navigate('/accepted', { state: { invitation } });
     }, 1200);
   };
 

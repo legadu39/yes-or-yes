@@ -250,8 +250,9 @@ const ValentinePage = () => {
     acceptInvitation(invitation.id, finalTime); 
     
     // 4. Navigation différée pour profiter du moment
+    // IMPORTANT : On transmet l'objet invitation complet pour que la page suivante puisse afficher les noms
     setTimeout(() => {
-        navigate('/accepted');
+        navigate('/accepted', { state: { invitation } });
     }, 1200);
   };
 

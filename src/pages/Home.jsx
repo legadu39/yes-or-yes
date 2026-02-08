@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams, Link } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { 
   Eye, Sparkles, Copy, Heart, LockKeyhole, TrendingUp, CreditCard, 
-  Timer, Loader2, History, AlertTriangle, Check, Share2, RefreshCw
+  Timer, Loader2, History, AlertTriangle, Check, Share2, RefreshCw, Shield, Clock
 } from 'lucide-react';
 
 // --- CONFIGURATION ---
@@ -27,15 +27,18 @@ const Home = () => {
     createInvitation, 
     getSpyReport, 
     verifyPaymentStatus, 
-    getOwnedInvitations 
+    getOwnedInvitations,
+    ownedInvitations 
   } = useApp();
 
   const [formData, setFormData] = useState({ sender: '', valentine: '', plan: 'spy' });
   const [generatedLinks, setGeneratedLinks] = useState(null);
-  const [status, setStatus] = useState('idle'); // idle, processing, paying, verifying, success, error
+  const [status, setStatus] = useState('idle'); 
   const [activeNotif, setActiveNotif] = useState(null);
-  const [hasHistory, setHasHistory] = useState(false);
   const [copiedField, setCopiedField] = useState(null);
+  
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   // --- INTELLIGENCE : PERSISTANCE DU BROUILLON ---
   useEffect(() => {
@@ -55,47 +58,28 @@ const Home = () => {
     }
   }, [formData, status]);
 
-  // --- LOGIQUE PRINCIPALE DE RETOUR PAIEMENT (INTELLIGENCE CONTEXTUELLE) ---
+  // --- LOGIQUE RETOUR PAIEMENT ---
   useEffect(() => {
-    const owned = getOwnedInvitations();
-    if (owned.length > 0) setHasHistory(true);
-
-    // 1. Récupération des paramètres d'URL
-    // 'client_reference_id' est souvent renvoyé par Stripe comme paramètre si configuré
     const urlId = searchParams.get('payment_id') || searchParams.get('id') || searchParams.get('client_reference_id');
-    const sessionId = searchParams.get('session_id'); // ID de session Stripe
     const fromStripe = searchParams.get('success') === 'true';
     const stateParam = searchParams.get('state');
 
-    // Cas 1 : Retour standard avec ID (Idéal)
     if (urlId && !generatedLinks) {
       if (fromStripe || stateParam) {
-        handlePaymentReturn(urlId, owned, stateParam);
+        handlePaymentReturn(urlId, stateParam);
       } else {
-        // Accès direct : on vérifie juste si c'est payé
         verifyPaymentStatus(urlId).then(isPaid => {
           if (isPaid) {
+            const owned = getOwnedInvitations();
             const foundLocal = owned.find(i => i.id === urlId);
             displaySuccess({ id: urlId, ...foundLocal }, foundLocal?.token);
           }
         });
       }
     }
-    // Cas 2 : Retour Stripe SANS ID (Problème fréquent sur Mobile/Cross-Browser)
     else if (fromStripe && !urlId && !generatedLinks) {
        console.log("⚠️ Retour Stripe sans ID explicite. Tentative de restauration heuristique.");
-       // On essaie de restaurer la dernière commande créée localement
        restoreLastOrder();
-    }
-    // Cas 3 : Polling automatique si commande récente (< 10 min) en attente
-    else if (!generatedLinks && owned.length > 0 && status === 'idle') {
-      const lastOrder = owned[0]; // Le plus récent (car on unshift)
-      const diff = new Date() - new Date(lastOrder.createdAt);
-      if (diff < 10 * 60 * 1000) { // 10 minutes
-        verifyPaymentStatus(lastOrder.id).then(isPaid => {
-          if (isPaid) displaySuccess(lastOrder, lastOrder.token);
-        });
-      }
     }
   }, [searchParams]);
 
@@ -106,11 +90,10 @@ const Home = () => {
     window.hasPreloaded = true;
   };
 
-  // --- TRAITEMENT DU RETOUR PAIEMENT ---
-  const handlePaymentReturn = async (paymentId, owned, stateParam) => {
+  const handlePaymentReturn = async (paymentId, stateParam) => {
     console.log("Traitement retour paiement pour:", paymentId);
     
-    // 1. Récupération Cross-Boundary via State (Priorité 1)
+    const owned = getOwnedInvitations();
     let foundToken = null;
     let recoveredData = null;
 
@@ -119,9 +102,8 @@ const Home = () => {
         const decoded = JSON.parse(atob(stateParam));
         if (decoded.t && decoded.id === paymentId) {
           foundToken = decoded.t;
-          recoveredData = { sender: decoded.s, valentine: decoded.v };
-          
-          // Réparation mémoire locale (Auto-Healing)
+          // IMPORTANT : On récupère aussi le PLAN ('p') pour savoir quoi afficher
+          recoveredData = { sender: decoded.s, valentine: decoded.v, plan: decoded.p };
           repairLocalMemory(paymentId, foundToken, recoveredData);
         }
       } catch (e) {
@@ -129,26 +111,23 @@ const Home = () => {
       }
     }
 
-    // 2. Fallback LocalStorage (Priorité 2)
     const foundLocal = owned.find(i => i.id === paymentId);
     if (!foundToken && foundLocal) {
         foundToken = foundLocal.token;
         recoveredData = foundLocal;
     }
 
-    // 3. UI Optimiste
     if (foundToken) {
+      // On passe le plan récupéré (ou 'spy' par défaut uniquement si donnée corrompue)
       displaySuccess({
         id: paymentId,
         sender: recoveredData?.sender || "Vous",
         valentine: recoveredData?.valentine || "...",
-        plan: 'spy'
+        plan: recoveredData?.plan || 'spy' 
       }, foundToken);
       
-      // Vérification silencieuse en arrière-plan
       verifyBackgroundSilent(paymentId, foundToken);
     } else {
-      // Si on a perdu le token, on doit attendre la validation serveur pour afficher au moins le lien public
       waitForServerValidation(paymentId, foundLocal);
     }
   };
@@ -159,7 +138,6 @@ const Home = () => {
        const newEntry = { id, token, createdAt: new Date().toISOString(), ...data };
        const newList = [newEntry, ...stored];
        localStorage.setItem('yesoryes_owned', JSON.stringify(newList));
-       console.log("🔧 Mémoire locale réparée via URL State");
     }
   };
 
@@ -177,38 +155,30 @@ const Home = () => {
     poll();
   };
 
-  // --- WATCHDOG : VALIDATION ACTIVE ET RÉSILIENTE ---
   const waitForServerValidation = async (paymentId, foundLocal) => {
     setStatus('verifying');
     let attempts = 0;
-    const MAX_ATTEMPTS = 20; // Étendu pour laisser le temps au webhook
+    const MAX_ATTEMPTS = 20; 
     let delay = 2000;
 
     const poll = async () => {
       attempts++;
-      console.log(`📡 Watchdog: Vérification status... (Essai ${attempts})`);
-      
       const isPaid = await verifyPaymentStatus(paymentId);
       
       if (isPaid) {
-        console.log("✅ Paiement confirmé !");
         localStorage.removeItem('draft_invitation');
         
         if (foundLocal && foundLocal.token) {
           const fullInvite = await getSpyReport(paymentId, foundLocal.token);
           displaySuccess(fullInvite || foundLocal, foundLocal.token);
         } else {
-          // Cas où on a perdu le token (appareil différent sans state)
           displayMinimalSuccess(paymentId);
-          alert("Paiement validé ! Votre navigateur sécurisé a changé, nous affichons le lien public.");
         }
       } else if (attempts < MAX_ATTEMPTS) {
-        // Backoff progressif pour ne pas spammer
         delay = Math.min(delay * 1.1, 5000); 
         setTimeout(poll, delay);
       } else {
-        // TIMEOUT : Au lieu de fail, on propose une action manuelle
-        setStatus('verifying_long'); // Nouvel état UI
+        setStatus('verifying_long');
       }
     };
     poll();
@@ -222,11 +192,12 @@ const Home = () => {
         plan: invite.plan || 'spy' 
     });
     
+    // FILTRE STRICT : Le lien espion ne s'affiche QUE pour le plan SPY/PREMIUM
+    const showSpyLink = token && (invite.plan === 'spy' || invite.plan === 'premium');
+
     setGeneratedLinks({
       valentine: `${window.location.origin}/v/${invite.id}`,
-      spy: (token && (invite.plan === 'spy' || !invite.plan))
-        ? `${window.location.origin}/spy/${invite.id}?token=${token}` 
-        : null
+      spy: showSpyLink ? `${window.location.origin}/spy/${invite.id}?token=${token}` : null
     });
     
     setStatus('success');
@@ -243,15 +214,11 @@ const Home = () => {
   const restoreLastOrder = async () => {
     const owned = getOwnedInvitations();
     if (owned.length === 0) {
-        alert("Impossible de retrouver la commande automatiquement. Vérifiez vos emails.");
+        alert("Impossible de retrouver la commande automatiquement.");
         setStatus('idle');
         return;
     }
-
-    setStatus('verifying');
-    const lastOrder = owned[0]; // Le plus récent
-    
-    // On relance la vérification sur le dernier ID connu
+    const lastOrder = owned[0];
     waitForServerValidation(lastOrder.id, lastOrder);
   };
 
@@ -283,20 +250,20 @@ const Home = () => {
       if (!result || !result.id) throw new Error("Erreur création");
 
       const { id, token } = result;
-      console.log("Invitation initiée:", id);
-
       setStatus('paying');
 
-      // Encodage du state pour récupération cross-browser
-      const statePayload = btoa(JSON.stringify({ t: token, id: id, s: formData.sender, v: formData.valentine }));
+      // CRITIQUE : On ajoute le PLAN ('p') dans l'état encodé pour l'avoir au retour
+      const statePayload = btoa(JSON.stringify({ 
+        t: token, 
+        id: id, 
+        s: formData.sender, 
+        v: formData.valentine,
+        p: formData.plan // <--- AJOUTÉ
+      }));
       
-      // Construction URL de retour robuste
-      // On demande explicitement le retour de client_reference_id
       const returnUrl = encodeURIComponent(`${window.location.origin}?payment_id=${id}&success=true&state=${statePayload}`);
+      const stripeUrl = (formData.plan === 'spy' || formData.plan === 'premium') ? STRIPE_LINKS.spy : STRIPE_LINKS.basic;
       
-      const stripeUrl = formData.plan === 'spy' ? STRIPE_LINKS.spy : STRIPE_LINKS.basic;
-      
-      // Redirection
       window.location.href = `${stripeUrl}?client_reference_id=${id}&redirect_url=${returnUrl}`;
 
     } catch (error) {
@@ -329,86 +296,114 @@ const Home = () => {
     setCopiedField(field);
   };
 
+  const getShareUrl = (id) => `${window.location.origin}/v/${id}`;
+  const getSpyUrl = (id, token) => `${window.location.origin}/spy/${id}?token=${token}`;
+
   // --- RENDER ---
   if (status === 'success' && generatedLinks) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-6 animate-fade-in relative z-10">
-        <div className="card-valentine p-10 max-w-lg w-full text-center relative overflow-hidden">
-          <Heart className="absolute -top-10 -left-10 w-40 h-40 text-ruby-light opacity-10 pointer-events-none" />
+      <div className="min-h-screen bg-ruby-dark flex flex-col items-center justify-center p-6 animate-fade-in relative z-10">
+        <div className="max-w-2xl w-full bg-ruby-DEFAULT/10 backdrop-blur-md border border-rose-gold/20 rounded-3xl p-8 text-center shadow-2xl">
           
-          <div className="inline-block mb-4">
-            <Sparkles className="w-8 h-8 text-rose-gold animate-pulse-slow" />
-          </div>
-          
-          <h2 className="text-5xl font-script text-rose-pale mb-4">Invitation Prête</h2>
-          <p className="text-cream/80 mb-8 italic font-light">
-            Le destin de {formData.valentine} est entre vos mains.
-          </p>
-
-          <div className="bg-ruby-dark/30 border border-rose-gold/30 p-1 rounded-xl mb-6 relative group text-left">
-            <div className="p-4 backdrop-blur-sm rounded-lg">
-              <p className="text-[10px] text-rose-gold uppercase tracking-widest mb-2 font-medium flex items-center gap-2">
-                <Heart size={10} fill="currentColor" /> Lien pour {formData.valentine}
-              </p>
-              <div className="text-cream font-mono text-xs sm:text-sm break-all select-all opacity-90 pr-8">
-                {generatedLinks.valentine}
-              </div>
+          <div className="flex justify-center mb-6">
+            <div className="w-16 h-16 bg-green-500/20 rounded-full flex items-center justify-center border border-green-500/50 shadow-[0_0_30px_rgba(34,197,94,0.3)]">
+              <Check className="text-green-400 w-8 h-8" />
             </div>
-            <button 
-              onClick={() => handleShare(generatedLinks.valentine, 'valentine')}
-              className="absolute right-3 top-1/2 transform -translate-y-1/2 p-2 text-rose-gold hover:text-cream hover:bg-ruby-light/20 rounded-full transition"
-            >
-              {copiedField === 'valentine' ? <Check size={16} className="text-green-400" /> : <Share2 size={16} />}
-            </button>
           </div>
 
-          {generatedLinks.spy ? (
-            <div className="bg-gradient-to-r from-ruby-dark/40 to-[#2C050D] border border-rose-gold/20 p-1 rounded-xl mb-8 relative group text-left">
-              <div className="p-4 backdrop-blur-sm rounded-lg">
-                <p className="text-[10px] text-rose-gold uppercase tracking-widest mb-2 font-medium flex items-center gap-2">
-                  <LockKeyhole size={10} /> VOTRE Lien Espion Privé
-                </p>
-                <div className="text-cream/70 font-mono text-xs sm:text-sm break-all select-all opacity-90 pr-8">
-                  {generatedLinks.spy}
-                </div>
-              </div>
+          <h2 className="text-3xl font-script text-rose-pale mb-2">Invitation Prête</h2>
+          <p className="text-rose-pale/60 mb-8">Le destin de {formData.valentine} est entre vos mains.</p>
+
+          {/* LIEN PUBLIC (Toujours visible) */}
+          <div className="bg-ruby-dark/50 rounded-xl p-6 mb-6 border border-rose-gold/30">
+            <h3 className="text-rose-gold font-serif mb-4 flex items-center justify-center gap-2">
+              <Heart size={18} className="fill-rose-gold" />
+              Lien pour {formData.valentine}
+            </h3>
+            
+            <div className="flex gap-2 items-center bg-black/30 p-3 rounded-lg border border-rose-gold/10">
+              <code className="text-rose-pale/80 text-sm flex-1 truncate font-mono select-all">
+                {generatedLinks.valentine}
+              </code>
               <button 
-                onClick={() => handleShare(generatedLinks.spy, 'spy')}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 p-2 text-rose-gold hover:text-cream hover:bg-ruby-light/20 rounded-full transition"
+                onClick={() => handleShare(generatedLinks.valentine, 'valentine')}
+                className="p-2 hover:bg-rose-gold/20 rounded-md transition-colors text-rose-gold"
               >
-                {copiedField === 'spy' ? <Check size={16} className="text-green-400" /> : <Copy size={16} />}
+                {copiedField === 'valentine' ? <Check size={18} className="text-green-400" /> : <Copy size={18} />}
               </button>
             </div>
+          </div>
+
+          {/* LIEN ESPION (Seulement si le plan le permet) */}
+          {generatedLinks.spy ? (
+            <div className="bg-black/40 rounded-xl p-6 mb-8 border border-purple-500/30 relative overflow-hidden group">
+              <div className="absolute top-0 right-0 bg-purple-500/20 px-3 py-1 rounded-bl-lg text-[10px] text-purple-300 uppercase tracking-widest font-bold border-l border-b border-purple-500/20">
+                Privé
+              </div>
+              
+              <h3 className="text-purple-300 font-serif mb-4 flex items-center justify-center gap-2">
+                <Shield size={18} />
+                Votre Tableau de Bord Espion
+              </h3>
+              
+              <div className="flex gap-2 items-center bg-black/50 p-3 rounded-lg border border-purple-500/20">
+                <code className="text-purple-200/60 text-sm flex-1 truncate font-mono select-all blur-[2px] group-hover:blur-0 transition-all duration-500">
+                  {generatedLinks.spy}
+                </code>
+                <button 
+                  onClick={() => handleShare(generatedLinks.spy, 'spy')}
+                  className="p-2 hover:bg-purple-500/20 rounded-md transition-colors text-purple-400"
+                >
+                  {copiedField === 'spy' ? <Check size={18} className="text-green-400" /> : <Copy size={18} />}
+                </button>
+              </div>
+              
+              <div className="flex justify-center gap-4 mt-4">
+                  <button
+                      onClick={() => window.open(generatedLinks.spy, '_blank')}
+                      className="flex items-center gap-2 px-4 py-2 bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 text-sm rounded-full transition-all border border-purple-500/30"
+                  >
+                      <Eye size={14} /> Ouvrir le Dashboard
+                  </button>
+              </div>
+            </div>
           ) : (
+             // Ce bloc s'affiche uniquement pour le plan BASIC
             <div className="mb-8 text-xs text-rose-gold/50 italic border border-rose-gold/10 p-2 rounded">
-              Note : Lien espion non affiché (Mode récupération ou Plan Basic).
+              Note : Vous avez choisi le pack Essentiel (pas de tableau de bord).
             </div>
           )}
 
-          <div className="flex flex-col gap-3">
-             <a href={generatedLinks.valentine} target="_blank" rel="noreferrer" className="btn-ruby py-3 rounded-lg font-medium text-xs uppercase flex items-center justify-center gap-2">
-              <Eye size={14} /> Tester l'expérience
-            </a>
-          </div>
+          <button 
+            onClick={() => {
+                setStatus('idle');
+                setGeneratedLinks(null);
+                setFormData({ ...formData, valentine: '' });
+            }}
+            className="text-rose-pale/50 hover:text-rose-pale text-sm underline underline-offset-4 transition-colors"
+          >
+            Créer une autre invitation
+          </button>
         </div>
       </div>
     );
   }
 
+  // ÉCRAN D'ACCUEIL
   return (
-    <div className="min-h-screen p-4 flex flex-col items-center justify-center relative overflow-x-hidden pt-16">
+    <div className={`min-h-screen bg-ruby-dark p-4 flex flex-col items-center justify-center relative overflow-x-hidden pt-16 ${mounted ? 'opacity-100' : 'opacity-0'} transition-opacity duration-1000`}>
+      
+      <div className="fixed inset-0 pointer-events-none">
+        <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-ruby-DEFAULT/20 rounded-full blur-[120px] animate-pulse-slow"></div>
+        <div className="absolute bottom-[-10%] right-[-10%] w-[600px] h-[600px] bg-[#4a0a18]/40 rounded-full blur-[150px]"></div>
+      </div>
+
       <div className="fixed top-0 left-0 w-full bg-ruby-dark/95 border-b border-rose-gold/30 backdrop-blur-md z-50 py-2 px-4 flex justify-center items-center gap-3">
         <Timer size={14} className="text-rose-gold animate-pulse" />
         <p className="text-xs md:text-sm text-cream font-medium tracking-wide">
           Faites votre demande avant le <span className="text-rose-gold font-bold">14 Février</span>.
         </p>
       </div>
-
-      {hasHistory && status === 'idle' && (
-        <button onClick={restoreLastOrder} className="absolute top-20 right-6 text-rose-gold/50 hover:text-rose-gold text-xs uppercase tracking-widest flex items-center gap-2 transition-colors z-40">
-          <History size={12} /> Restaurer
-        </button>
-      )}
 
       <header className="text-center mb-10 relative z-10">
         <h1 className="text-7xl md:text-8xl font-script text-rose-pale mb-4 drop-shadow-lg">YesOrYes</h1>
@@ -450,7 +445,7 @@ const Home = () => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Plan Basic */}
+              {/* PLAN BASIC */}
               <div 
                 onClick={() => status === 'idle' && setFormData({...formData, plan: 'basic'})}
                 className={`cursor-pointer p-6 rounded-xl border transition-all duration-300 flex flex-col justify-between h-full ${formData.plan === 'basic' ? 'bg-ruby-light/10 border-rose-gold shadow-rosegold' : 'bg-transparent border-rose-gold/20 hover:border-rose-gold/50'} ${status !== 'idle' ? 'opacity-50' : ''}`}
@@ -464,11 +459,12 @@ const Home = () => {
                 </div>
               </div>
 
-              {/* Plan Spy */}
+              {/* PLAN SPY */}
               <div 
                 onClick={() => status === 'idle' && setFormData({...formData, plan: 'spy'})}
                 className={`relative cursor-pointer rounded-xl border transition-all duration-300 overflow-hidden ${formData.plan === 'spy' ? 'bg-gradient-to-br from-ruby-DEFAULT/30 to-ruby-dark/30 border-rose-gold shadow-rosegold scale-105' : 'bg-transparent border-rose-gold/20 hover:border-rose-gold/50'} ${status !== 'idle' ? 'opacity-50' : ''}`}
               >
+                <div className="absolute top-0 right-0 bg-rose-gold text-ruby-dark text-[10px] font-bold px-2 py-0.5 rounded-bl-lg">POPULAIRE</div>
                 <div className="p-6 relative z-10">
                   <div className="flex justify-between items-start mb-2">
                     <div className="flex items-center gap-2">
@@ -481,13 +477,6 @@ const Home = () => {
                 </div>
               </div>
             </div>
-          </div>
-
-          <div className="bg-orange-500/10 border border-orange-500/30 p-4 rounded-lg flex items-start gap-3">
-            <AlertTriangle className="text-orange-400 shrink-0 mt-0.5" size={18} />
-            <p className="text-xs text-orange-200/80 leading-relaxed">
-             <strong>Conseil :</strong> Ne changez pas de navigateur pendant le paiement pour conserver votre accès secret.
-            </p>
           </div>
 
           <button 
@@ -505,7 +494,45 @@ const Home = () => {
         </form>
       </main>
 
-      {/* Notifications */}
+      {/* HISTORIQUE LOCAL FILTRÉ */}
+      {ownedInvitations && ownedInvitations.length > 0 && status === 'idle' && (
+          <div className="w-full max-w-xl border-t border-rose-gold/10 pt-8 mb-12 relative z-10">
+              <h3 className="text-center text-rose-gold/50 text-xs uppercase tracking-widest mb-6 flex items-center justify-center gap-2">
+                  <Clock size={12} /> Vos invitations récentes
+              </h3>
+              <div className="space-y-3">
+                  {ownedInvitations.map((inv) => (
+                      <div key={inv.id} className="bg-white/5 border border-white/5 rounded-lg p-4 flex items-center justify-between hover:bg-white/10 transition-colors">
+                          <div>
+                              <div className="text-rose-pale font-medium">Pour {inv.valentine}</div>
+                              <div className="text-xs text-rose-pale/40">{new Date(inv.createdAt).toLocaleDateString()}</div>
+                          </div>
+                          <div className="flex gap-2">
+                              <button 
+                                  onClick={() => window.open(getShareUrl(inv.id), '_blank')}
+                                  className="p-2 bg-black/20 rounded-md text-rose-pale/60 hover:text-rose-pale hover:bg-black/40 transition-colors"
+                                  title="Voir l'invitation"
+                              >
+                                  <Eye size={16} />
+                              </button>
+                              
+                              {/* FILTRE STRICT : Pas de bouton espion pour BASIC */}
+                              {inv.plan !== 'basic' && (
+                                <button 
+                                    onClick={() => window.open(getSpyUrl(inv.id, inv.token), '_blank')}
+                                    className="p-2 bg-purple-500/10 rounded-md text-purple-400/60 hover:text-purple-300 hover:bg-purple-500/20 transition-colors border border-purple-500/10"
+                                    title="Dashboard Espion"
+                                >
+                                    <Shield size={16} />
+                                </button>
+                              )}
+                          </div>
+                      </div>
+                  ))}
+              </div>
+          </div>
+      )}
+
       {activeNotif && (
         <div className="fixed bottom-6 left-6 z-50 flex items-center gap-4 bg-ruby-dark/90 border border-rose-gold/30 backdrop-blur-md px-4 py-3 rounded-lg shadow-xl animate-slide-up max-w-[300px]">
           <div className="bg-rose-gold/20 p-2 rounded-full"><TrendingUp size={16} className="text-rose-gold" /></div>

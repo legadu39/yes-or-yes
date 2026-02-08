@@ -264,7 +264,15 @@ const Home = () => {
       const returnUrl = encodeURIComponent(`${window.location.origin}?payment_id=${id}&success=true&state=${statePayload}`);
       const stripeUrl = (formData.plan === 'spy' || formData.plan === 'premium') ? STRIPE_LINKS.spy : STRIPE_LINKS.basic;
       
+      // MODE PRODUCTION (Décommentez pour la mise en ligne)
       window.location.href = `${stripeUrl}?client_reference_id=${id}&redirect_url=${returnUrl}`;
+
+      // MODE TEST (BYPASS) - À supprimer en production
+      /*
+      console.log("🚧 MODE TEST: Bypass Stripe activé.");
+      const fakeReturnUrl = `${window.location.origin}?payment_id=${id}&success=true&state=${statePayload}`;
+      setTimeout(() => { window.location.href = fakeReturnUrl; }, 1500);
+      */
 
     } catch (error) {
       console.error("Erreur handleSubmit:", error);
@@ -491,12 +499,12 @@ const Home = () => {
         </form>
       </main>
 
-      {/* FOOTER LÉGAL - RÉINTÉGRÉ */}
+      {/* FOOTER LÉGAL - CORRIGÉ (URL FRANÇAISES) */}
       <footer className="mt-auto py-8 text-center relative z-10 w-full opacity-60 hover:opacity-100 transition-opacity">
         <div className="flex flex-wrap justify-center gap-4 md:gap-8 text-[10px] uppercase tracking-widest text-rose-gold/50 font-serif">
-            <Link to="/legal/terms" className="hover:text-rose-gold transition-colors">CGV</Link>
-            <Link to="/legal/privacy" className="hover:text-rose-gold transition-colors">Confidentialité</Link>
-            <Link to="/legal/mentions" className="hover:text-rose-gold transition-colors">Mentions Légales</Link>
+            <Link to="/legal/cgv" className="hover:text-rose-gold transition-colors">CGV</Link>
+            <Link to="/legal/confidentialite" className="hover:text-rose-gold transition-colors">Confidentialité</Link>
+            <Link to="/legal/mentions-legales" className="hover:text-rose-gold transition-colors">Mentions Légales</Link>
             <a href="mailto:contact@yesoryes.com" className="hover:text-rose-gold transition-colors">Contact</a>
         </div>
         <p className="mt-4 text-[9px] text-ruby-light/30">

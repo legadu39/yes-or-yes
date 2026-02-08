@@ -399,7 +399,7 @@ const Home = () => {
             </div>
           </div>
 
-          {/* LIEN ESPION (Seulement si le plan le permet) */}
+          {/* LIEN ESPION (Toujours visible si un token existe, libellé adapté au plan) */}
           {generatedLinks.spy ? (
             <div className="bg-black/40 rounded-xl p-6 mb-8 border border-purple-500/30 relative overflow-hidden group">
               <div className="absolute top-0 right-0 bg-purple-500/20 px-3 py-1 rounded-bl-lg text-[10px] text-purple-300 uppercase tracking-widest font-bold border-l border-b border-purple-500/20">
@@ -408,7 +408,11 @@ const Home = () => {
               
               <h3 className="text-purple-300 font-serif mb-4 flex items-center justify-center gap-2">
                 <Shield size={18} />
-                Votre Tableau de Bord Espion
+                {/* LIBELLÉ DYNAMIQUE SELON LE PLAN */}
+                {formData.plan === 'spy' || formData.plan === 'premium' 
+                    ? 'Votre Tableau de Bord Espion'
+                    : 'Suivre la réponse (Statistiques)'
+                }
               </h3>
               
               <div className="flex gap-2 items-center bg-black/50 p-3 rounded-lg border border-purple-500/20">
@@ -428,12 +432,15 @@ const Home = () => {
                       onClick={() => window.open(generatedLinks.spy, '_blank')}
                       className="flex items-center gap-2 px-4 py-2 bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 text-sm rounded-full transition-all border border-purple-500/30"
                   >
-                      <Eye size={14} /> Ouvrir le Dashboard
+                      <Eye size={14} /> 
+                      {formData.plan === 'spy' || formData.plan === 'premium'
+                          ? 'Ouvrir le Dashboard'
+                          : 'Voir les Statistiques'
+                      }
                   </button>
               </div>
             </div>
           ) : (
-             // Ce bloc s'affiche uniquement pour le plan BASIC
             <div className="mb-8 text-xs text-rose-gold/50 italic border border-rose-gold/10 p-2 rounded">
               Note : Vous avez choisi le pack Essentiel (pas de tableau de bord).
             </div>

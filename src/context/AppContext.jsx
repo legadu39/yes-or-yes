@@ -108,6 +108,7 @@ export const AppProvider = ({ children }) => {
         sender: sender.trim(),
         valentine: valentine.trim(),
         token: newToken, 
+        plan: plan,
         createdAt: new Date().toISOString() 
       };
 
@@ -130,6 +131,19 @@ export const AppProvider = ({ children }) => {
         localStorage.setItem('yesoryes_owned', JSON.stringify(updated));
         return updated;
     });
+  };
+
+  // --- FONCTION UTILITAIRE POUR RÉPARATION MÉMOIRE LOCALE ---
+  const repairLocalMemory = (id, token, data) => {
+    const stored = localStorage.getItem('yesoryes_owned') ? JSON.parse(localStorage.getItem('yesoryes_owned')) : [];
+    // On met à jour l'entrée existante ou on en crée une nouvelle
+    const filtered = stored.filter(i => i.id !== id);
+    const newEntry = { id, token, createdAt: new Date().toISOString(), ...data };
+    const newList = [newEntry, ...filtered];
+    localStorage.setItem('yesoryes_owned', JSON.stringify(newList));
+    
+    // Mise à jour du state React également
+    setOwnedInvitations(newList);
   };
 
   // --- INTELLIGENCE : RÉCUPÉRATION PAR SESSION STRIPE ---
@@ -279,8 +293,20 @@ export const AppProvider = ({ children }) => {
 
   const verifyPaymentStatus = async (id) => {
     try {
-      // getPublicInvitation gère maintenant automatiquement le cas ID Stripe vs UUID
       const data = await getPublicInvitation(id);
+      
+      // INTELLIGENCE UPGRADE : Synchronisation automatique du plan
+      if (data && data.payment_status === 'paid') {
+          const owned = getOwnedInvitations();
+          const localEntry = owned.find(i => i.id === data.id);
+          
+          // Si le plan a changé côté serveur (upgrade détecté), on met à jour local
+          if (localEntry && localEntry.plan !== data.plan) {
+              console.log(`✨ Upgrade détecté : ${localEntry.plan} → ${data.plan}`);
+              repairLocalMemory(data.id, localEntry.token, { ...localEntry, plan: data.plan });
+          }
+      }
+      
       return !!data && data.payment_status === 'paid';
     } catch (error) {
       console.error("Erreur verifyPaymentStatus", error);
@@ -301,7 +327,8 @@ export const AppProvider = ({ children }) => {
     updateOwnedInvitations,
     recoverBySessionId,
     saveDraft,
-    recoverDraft
+    recoverDraft,
+    repairLocalMemory
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

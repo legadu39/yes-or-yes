@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { supabase } from '../lib/supabaseClient';
-import { Shield, Clock, MousePointer2, CheckCircle2, HeartHandshake, LockKeyhole, Loader2, Ban, Eye, PartyPopper } from 'lucide-react';
+import { Shield, Clock, MousePointer2, CheckCircle2, HeartHandshake, LockKeyhole, Loader2, Ban, Eye, PartyPopper, Lock, Sparkles } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 const SpyDashboard = () => {
@@ -14,14 +14,14 @@ const SpyDashboard = () => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [accessDenied, setAccessDenied] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState('connecting'); // 'connecting', 'live', 'polling'
+  const [connectionStatus, setConnectionStatus] = useState('connecting'); 
   
   const consecutiveErrors = useRef(0);
-  
-  // Réf pour comparer les données et détecter les changements (Feedback Haptique)
   const prevDataRef = useRef(null);
 
-  // Fonction de chargement initiale et unitaire
+  // INTELLIGENCE FREEMIUM : Détection du plan de l'utilisateur
+  const isLocked = data && data.plan === 'basic';
+
   const fetchInitialData = async () => {
     try {
       const token = searchParams.get('token');
@@ -55,22 +55,17 @@ const SpyDashboard = () => {
 
   const updateDataWithEffect = (newData) => {
       setData(prev => {
-          // Détection d'événements majeurs
           if (prev && JSON.stringify(prev) !== JSON.stringify(newData)) {
-              // VICTOIRE : Si le statut passe à acceptée
               if (newData.status === 'accepted' && prev.status !== 'accepted') {
                   triggerVictory();
               }
-              // Si nouvelle tentative
               else if (newData.attempts > prev.attempts) {
                   if (navigator.vibrate) navigator.vibrate(50);
               }
-              // Si vue pour la première fois (Ghosting detection)
               else if (newData.viewed_at && !prev.viewed_at) {
                   if (navigator.vibrate) navigator.vibrate([50, 50, 50]);
               }
           } 
-          // Cas spécifique : Chargement initial déjà accepté (on veut quand même les confettis si on arrive sur la page)
           else if (!prev && newData.status === 'accepted') {
              setTimeout(triggerVictory, 500);
           }
@@ -95,10 +90,20 @@ const SpyDashboard = () => {
   };
 
   useEffect(() => {
-    // 1. Chargement Initial
+    // Détection retour après upgrade
+    const upgradeSuccess = searchParams.get('upgrade');
+    if (upgradeSuccess === 'success') {
+        // Message de félicitations transitoire
+        const timer = setTimeout(() => {
+            // On retire le paramètre de l'URL pour ne pas re-afficher le message
+            const newUrl = window.location.pathname + '?token=' + searchParams.get('token');
+            window.history.replaceState({}, '', newUrl);
+        }, 5000);
+        return () => clearTimeout(timer);
+    }
+
     fetchInitialData();
 
-    // 2. INTELLIGENCE : Souscription Temps Réel (Websockets)
     const channel = supabase
       .channel(`invitation-${id}`)
       .on(
@@ -110,9 +115,7 @@ const SpyDashboard = () => {
           filter: `id=eq.${id}`,
         },
         (payload) => {
-          // Mise à jour instantanée
           console.log("⚡ Realtime Update:", payload.new);
-          // On adapte le payload brut au format attendu (game_status -> status)
           const adapted = { ...payload.new, status: payload.new.game_status };
           updateDataWithEffect(adapted);
         }
@@ -125,8 +128,6 @@ const SpyDashboard = () => {
         }
       });
 
-    // 3. RESILIENCE : Polling de secours (Heartbeat)
-    // Au cas où le websocket saute, ou pour rafraîchir toutes les 30s
     const interval = setInterval(async () => {
         await fetchInitialData();
     }, 30000);
@@ -164,7 +165,6 @@ const SpyDashboard = () => {
 
   if (!data) return null;
 
-  // --- SCORING & PROFILAGE INTELLIGENT ---
   const attempts = data.attempts || 0;
   const time = parseFloat(data.hesitation_time) || 0;
   
@@ -188,7 +188,6 @@ const SpyDashboard = () => {
         return { title: "L'Équilibrée", desc: "Un mélange sain de jeu et de sincérité. Une conquête validée avec succès." };
     } 
     
-    // Profils "En cours" (Ghosting)
     if (data.viewed_at && data.status === 'pending') {
         const viewedTime = new Date(data.viewed_at);
         const now = new Date();
@@ -205,6 +204,16 @@ const SpyDashboard = () => {
   const profile = getPsychologicalProfile();
   const hesitationsDisplay = time.toFixed(1);
 
+  // LIEN UPGRADE STRIPE
+  const handleUpgrade = () => {
+    const token = searchParams.get('token');
+    const upgradeUrl = `https://buy.stripe.com/8x28wOcc6gFRfpAdk76Vq02?client_reference_id=${id}&redirect_url=${encodeURIComponent(window.location.origin + `/spy/${id}?token=${token}&upgrade=success`)}`;
+    window.location.href = upgradeUrl;
+  };
+
+  // Message de félicitations après upgrade
+  const showUpgradeSuccess = searchParams.get('upgrade') === 'success';
+
   return (
     <div className="min-h-screen p-6 font-serif text-cream selection:bg-ruby-light selection:text-cream flex justify-center items-center relative z-10">
       <div className="max-w-3xl w-full border border-rose-gold/30 bg-ruby-dark/60 backdrop-blur-xl rounded-xl overflow-hidden shadow-[0_0_50px_rgba(106,15,32,0.5)] relative animate-fade-in">
@@ -218,11 +227,10 @@ const SpyDashboard = () => {
                 <div>
                     <h1 className="text-rose-pale text-2xl font-script">Carnet Secret</h1>
                     <p className="text-xs text-rose-gold/70 uppercase tracking-widest flex items-center gap-2">
-                        Confidentiel <span className="w-1 h-1 bg-rose-gold/50 rounded-full"></span> ID: {data.id.substring(0, 6)}
+                        {isLocked ? 'Version Essentiel' : 'Confidentiel'} <span className="w-1 h-1 bg-rose-gold/50 rounded-full"></span> ID: {data.id.substring(0, 6)}
                     </p>
                 </div>
             </div>
-            {/* Indicateur de Connexion */}
             <div className={`hidden sm:flex px-4 py-1 border text-xs rounded-full items-center gap-2 tracking-wider shadow-sm transition-colors ${
                 connectionStatus === 'live' 
                 ? 'border-ruby-light/50 text-ruby-light bg-ruby-light/10' 
@@ -236,10 +244,16 @@ const SpyDashboard = () => {
         <div className="p-8 relative">
              <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/aged-paper.png')] opacity-5 mix-blend-overlay pointer-events-none"></div>
             
-            {/* --- ZONE HEADER DYNAMIQUE : LE MOMENT DE VÉRITÉ --- */}
+            {/* Message de félicitations après upgrade */}
+            {showUpgradeSuccess && (
+                <div className="mb-6 p-4 bg-green-900/20 border border-green-500/30 rounded-lg text-center animate-fade-in">
+                    <Sparkles className="w-6 h-6 text-green-400 mx-auto mb-2" />
+                    <p className="text-green-400 font-medium">🎉 Votre carnet secret est désormais débloqué !</p>
+                </div>
+            )}
+
             <div className="mb-12 text-center relative z-10">
                 {data.status === 'accepted' ? (
-                   // VERSION VICTOIRE (Le Garçon reçoit "ELLE A DIT OUI")
                    <div className="animate-float">
                       <span className="text-xs uppercase text-green-400 tracking-[0.3em] block mb-3 font-bold flex items-center justify-center gap-2">
                          <PartyPopper size={16} /> Mission Accomplie <PartyPopper size={16} />
@@ -253,7 +267,6 @@ const SpyDashboard = () => {
                       </div>
                    </div>
                 ) : (
-                   // VERSION OBSERVATION (Classique)
                    <>
                       <span className="text-xs uppercase text-rose-gold/60 tracking-[0.3em] block mb-3">Sujet de l'observation</span>
                       <h2 className="text-5xl font-script text-cream mb-4 drop-shadow-md">{data.valentine}</h2>
@@ -267,7 +280,8 @@ const SpyDashboard = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10">
                 
-                <div className="bg-ruby-dark/40 p-6 rounded-lg border border-rose-gold/10 hover:border-rose-gold/40 transition-all hover:bg-ruby-dark/60 group">
+                {/* CARTES STATISTIQUES AVEC FLOU CONDITIONNEL */}
+                <div className={`bg-ruby-dark/40 p-6 rounded-lg border border-rose-gold/10 hover:border-rose-gold/40 transition-all hover:bg-ruby-dark/60 group relative ${isLocked ? 'blur-md' : ''}`}>
                     <div className="flex justify-between items-start mb-4">
                         <MousePointer2 className="text-rose-gold/50 w-5 h-5 group-hover:text-rose-gold transition-colors" />
                         <span className="text-xs font-medium text-rose-pale uppercase tracking-wider">Tentatives d'esquive</span>
@@ -276,7 +290,7 @@ const SpyDashboard = () => {
                     <div className="text-xs text-cream/50 italic">Clics sur le bouton "Non"</div>
                 </div>
 
-                <div className="bg-ruby-dark/40 p-6 rounded-lg border border-rose-gold/10 hover:border-rose-gold/40 transition-all hover:bg-ruby-dark/60 group">
+                <div className={`bg-ruby-dark/40 p-6 rounded-lg border border-rose-gold/10 hover:border-rose-gold/40 transition-all hover:bg-ruby-dark/60 group relative ${isLocked ? 'blur-md' : ''}`}>
                     <div className="flex justify-between items-start mb-4">
                         <Clock className="text-rose-gold/50 w-5 h-5 group-hover:text-rose-gold transition-colors" />
                         <span className="text-xs font-medium text-rose-pale uppercase tracking-wider">Temps d'hésitation</span>
@@ -285,34 +299,64 @@ const SpyDashboard = () => {
                     <div className="text-xs text-cream/50 italic">Avant acceptation finale</div>
                 </div>
 
-                <div className="col-span-1 md:col-span-2 bg-gradient-to-r from-ruby-dark/60 to-[#2C050D] p-8 rounded-lg border border-rose-gold/20 mt-4 relative overflow-hidden">
-                    <div className="absolute top-0 right-0 p-4 opacity-10">
-                        <Shield size={100} className="text-rose-gold" />
-                    </div>
-                    
-                    <h3 className="text-rose-gold text-sm font-medium uppercase tracking-widest mb-6 flex items-center gap-2 relative z-10">
-                        <HeartHandshake size={16} /> Synthèse Romantique
-                    </h3>
-                    
-                    <div className="space-y-6 relative z-10">
-                        <div>
-                            <div className="flex justify-between text-xs mb-2 text-cream/70 tracking-wider">
-                                <span>Indice de Passion (IA Scoring)</span>
-                                <span>{normalizedScore}/100</span>
-                            </div>
-                            <div className="w-full bg-ruby-dark/80 h-2 rounded-full overflow-hidden border border-rose-gold/10">
-                                <div className="h-full bg-gradient-to-r from-rose-gold to-ruby-light shadow-[0_0_10px_rgba(210,77,87,0.5)] transition-all duration-1000" style={{width: `${normalizedScore}%`}}></div>
-                            </div>
+                {/* PROFIL PSYCHOLOGIQUE : Remplacement conditionnel */}
+                {isLocked ? (
+                    // VERSION VERROUILLÉE : Bandeau Upsell
+                    <div className="col-span-1 md:col-span-2 bg-gradient-to-br from-purple-900/40 to-ruby-dark/60 p-8 rounded-lg border-2 border-purple-500/30 mt-4 relative overflow-hidden">
+                        <div className="absolute top-0 right-0 p-4 opacity-20">
+                            <Lock size={80} className="text-purple-400" />
                         </div>
                         
-                        <div className="border-l-2 border-ruby-light pl-4 py-2 bg-ruby-light/5 rounded-r-lg">
-                            <h4 className="text-rose-pale font-serif text-lg mb-1">{profile.title}</h4>
-                            <p className="text-sm text-cream/80 font-light italic leading-relaxed">
-                                {profile.desc}
+                        <div className="text-center relative z-10">
+                            <h3 className="text-purple-300 text-xl font-script mb-3 flex items-center justify-center gap-2">
+                                <Sparkles size={20} /> Analyse Psychologique Complète
+                            </h3>
+                            <p className="text-cream/70 text-sm mb-6 italic">
+                                Découvrez son profil émotionnel détaillé, ses véritables intentions et le score de passion exact.
                             </p>
+                            
+                            <button
+                                onClick={handleUpgrade}
+                                className="inline-flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-purple-600 to-rose-gold text-cream font-bold text-lg rounded-full shadow-[0_0_30px_rgba(147,51,234,0.4)] hover:shadow-[0_0_50px_rgba(147,51,234,0.6)] transition-all border border-purple-400/50"
+                            >
+                                <Lock size={18} />
+                                Débloquer pour 1€
+                            </button>
+                            
+                            <p className="text-purple-300/50 text-xs mt-4">Paiement sécurisé • Accès immédiat</p>
                         </div>
                     </div>
-                </div>
+                ) : (
+                    // VERSION COMPLÈTE : Analyse débloquée
+                    <div className="col-span-1 md:col-span-2 bg-gradient-to-r from-ruby-dark/60 to-[#2C050D] p-8 rounded-lg border border-rose-gold/20 mt-4 relative overflow-hidden">
+                        <div className="absolute top-0 right-0 p-4 opacity-10">
+                            <Shield size={100} className="text-rose-gold" />
+                        </div>
+                        
+                        <h3 className="text-rose-gold text-sm font-medium uppercase tracking-widest mb-6 flex items-center gap-2 relative z-10">
+                            <HeartHandshake size={16} /> Synthèse Romantique
+                        </h3>
+                        
+                        <div className="space-y-6 relative z-10">
+                            <div>
+                                <div className="flex justify-between text-xs mb-2 text-cream/70 tracking-wider">
+                                    <span>Indice de Passion (IA Scoring)</span>
+                                    <span>{normalizedScore}/100</span>
+                                </div>
+                                <div className="w-full bg-ruby-dark/80 h-2 rounded-full overflow-hidden border border-rose-gold/10">
+                                    <div className="h-full bg-gradient-to-r from-rose-gold to-ruby-light shadow-[0_0_10px_rgba(210,77,87,0.5)] transition-all duration-1000" style={{width: `${normalizedScore}%`}}></div>
+                                </div>
+                            </div>
+                            
+                            <div className="border-l-2 border-ruby-light pl-4 py-2 bg-ruby-light/5 rounded-r-lg">
+                                <h4 className="text-rose-pale font-serif text-lg mb-1">{profile.title}</h4>
+                                <p className="text-sm text-cream/80 font-light italic leading-relaxed">
+                                    {profile.desc}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
             </div>
         </div>

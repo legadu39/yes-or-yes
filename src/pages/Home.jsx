@@ -264,8 +264,13 @@ const Home = () => {
       const returnUrl = encodeURIComponent(`${window.location.origin}?payment_id=${id}&success=true&state=${statePayload}`);
       const stripeUrl = (formData.plan === 'spy' || formData.plan === 'premium') ? STRIPE_LINKS.spy : STRIPE_LINKS.basic;
       
-      // MODE PRODUCTION
-      window.location.href = `${stripeUrl}?client_reference_id=${id}&redirect_url=${returnUrl}`;
+      // MODE PRODUCTION (Commenté pour le TEST)
+      // window.location.href = `${stripeUrl}?client_reference_id=${id}&redirect_url=${returnUrl}`;
+
+      // MODE TEST (BYPASS) - ACTIVÉ
+      console.log("🚧 MODE TEST: Bypass Stripe activé.");
+      const fakeReturnUrl = `${window.location.origin}?payment_id=${id}&success=true&state=${statePayload}`;
+      setTimeout(() => { window.location.href = fakeReturnUrl; }, 1500);
 
     } catch (error) {
       console.error("Erreur handleSubmit:", error);
@@ -406,7 +411,7 @@ const Home = () => {
       <header className="text-center mb-10 relative z-10 max-w-2xl px-4">
         <h1 className="text-7xl md:text-8xl font-script text-rose-pale mb-4 drop-shadow-lg">YesOrYes</h1>
         
-        {/* CORRECTION POINT AVEUGLE : EXPLICATION DU CONCEPT */}
+        {/* EXPLICATION DU CONCEPT (STRATÉGIE 10/10) */}
         <p className="text-cream/90 text-sm md:text-base font-serif italic mb-6 leading-relaxed border-l-2 border-rose-gold/50 pl-4 py-2 bg-ruby-light/10 rounded-r-lg shadow-lg">
           Envoyez le lien. Le bouton "NON" s'enfuira quand elle essaiera de cliquer. <br/>
           <span className="text-rose-gold/70 text-xs uppercase tracking-widest not-italic font-bold">

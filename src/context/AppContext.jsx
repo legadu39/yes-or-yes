@@ -68,6 +68,7 @@ export const AppProvider = ({ children }) => {
 
   const updateOwnedInvitations = (invitation) => {
     setOwnedInvitations(prev => {
+      // Nettoyage préventif des doublons par ID
       const filtered = prev.filter(i => i.id !== invitation.id);
       const updated = [invitation, ...filtered];
       localStorage.setItem('yesoryes_owned', JSON.stringify(updated));
@@ -91,16 +92,25 @@ export const AppProvider = ({ children }) => {
         throw new Error("Paramètres invalides");
       }
 
-      // --- HEURISTIQUE ANTI-DOUBLON (NOUVEAUTÉ) ---
+      // --- HEURISTIQUE ANTI-DOUBLON (CORRIGÉE) ---
       const owned = getOwnedInvitations();
 
       const recentDuplicate = owned.find(invite => {
-        const isSamePeople = 
-          invite.sender.toLowerCase().trim() === sender.toLowerCase().trim() &&
-          invite.valentine.toLowerCase().trim() === valentine.toLowerCase().trim();
+        // CORRECTION : On s'assure que les champs existent avant le toLowerCase()
+        // Cela empêche le crash si localStorage contient de vieilles données sans 'sender'
+        const inviteSender = (invite.sender || "").toLowerCase().trim();
+        const inviteValentine = (invite.valentine || "").toLowerCase().trim();
+        
+        const currentSender = sender.toLowerCase().trim();
+        const currentValentine = valentine.toLowerCase().trim();
 
-        const isRecent = 
-          (Date.now() - new Date(invite.createdAt).getTime()) < (5 * 60 * 1000);
+        const isSamePeople = 
+          inviteSender === currentSender &&
+          inviteValentine === currentValentine;
+
+        // Vérification de sécurité sur createdAt
+        const inviteTime = invite.createdAt ? new Date(invite.createdAt).getTime() : 0;
+        const isRecent = (Date.now() - inviteTime) < (5 * 60 * 1000);
 
         const isSamePlan = invite.plan === plan;
 
@@ -111,8 +121,11 @@ export const AppProvider = ({ children }) => {
         console.log("⚠️ Doublon détecté. Réutilisation de l'invitation existante.");
 
         const timeAgo = Math.floor((Date.now() - new Date(recentDuplicate.createdAt)) / 1000);
+        // On évite les temps négatifs ou NaN
+        const displayTime = isNaN(timeAgo) ? "quelques" : timeAgo;
+        
         const reuse = window.confirm(
-          `Une invitation identique pour ${valentine} existe déjà (créée il y a ${timeAgo}s).\n\n` +
+          `Une invitation identique pour ${valentine} existe déjà (créée il y a ${displayTime}s).\n\n` +
           `Voulez-vous la réutiliser au lieu d'en créer une nouvelle ?`
         );
 
@@ -141,6 +154,7 @@ export const AppProvider = ({ children }) => {
 
       if (!data) throw new Error("Erreur technique: Pas de retour DB.");
 
+      // Support des différents formats de retour possibles
       const newId = data.id || data.new_id;
       const newToken = data.admin_token || data.new_token || data.token;
 
@@ -177,7 +191,7 @@ export const AppProvider = ({ children }) => {
     }
 
     // HEURISTIQUE 2 : Si ID Stripe, chercher via RPC
-    if (partialInfo.id && partialInfo.id.startsWith('cs_')) {
+    if (partialInfo.id && typeof partialInfo.id === 'string' && partialInfo.id.startsWith('cs_')) {
       const recovered = await recoverBySessionId(partialInfo.id);
       if (recovered) {
         const localMatch = owned.find(i => 
@@ -197,7 +211,7 @@ export const AppProvider = ({ children }) => {
     // HEURISTIQUE 3 : Invitations récentes (30 min)
     const recentThreshold = Date.now() - (30 * 60 * 1000);
     const recentInvites = owned.filter(i => 
-      new Date(i.createdAt).getTime() > recentThreshold
+      i.createdAt && new Date(i.createdAt).getTime() > recentThreshold
     );
 
     if (recentInvites.length === 1) {
@@ -254,7 +268,8 @@ export const AppProvider = ({ children }) => {
     const stored = localStorage.getItem('yesoryes_owned');
     if (!stored) return [];
     try {
-      return JSON.parse(stored);
+      const parsed = JSON.parse(stored);
+      return Array.isArray(parsed) ? parsed : [];
     } catch (e) {
       return [];
     }

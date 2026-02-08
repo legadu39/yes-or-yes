@@ -2,7 +2,8 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { supabase } from '../lib/supabaseClient';
-import { Shield, Clock, MousePointer2, CheckCircle2, HeartHandshake, LockKeyhole, Loader2, Ban, Eye } from 'lucide-react';
+import { Shield, Clock, MousePointer2, CheckCircle2, HeartHandshake, LockKeyhole, Loader2, Ban, Eye, PartyPopper } from 'lucide-react';
+import confetti from 'canvas-confetti';
 
 const SpyDashboard = () => {
   const { id } = useParams();
@@ -54,13 +55,11 @@ const SpyDashboard = () => {
 
   const updateDataWithEffect = (newData) => {
       setData(prev => {
-          prevDataRef.current = prev;
-          
-          // Détection d'événements majeurs pour vibration
+          // Détection d'événements majeurs
           if (prev && JSON.stringify(prev) !== JSON.stringify(newData)) {
-              // Si le statut passe à acceptée
+              // VICTOIRE : Si le statut passe à acceptée
               if (newData.status === 'accepted' && prev.status !== 'accepted') {
-                  if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 500]);
+                  triggerVictory();
               }
               // Si nouvelle tentative
               else if (newData.attempts > prev.attempts) {
@@ -70,9 +69,29 @@ const SpyDashboard = () => {
               else if (newData.viewed_at && !prev.viewed_at) {
                   if (navigator.vibrate) navigator.vibrate([50, 50, 50]);
               }
+          } 
+          // Cas spécifique : Chargement initial déjà accepté (on veut quand même les confettis si on arrive sur la page)
+          else if (!prev && newData.status === 'accepted') {
+             setTimeout(triggerVictory, 500);
           }
+
+          prevDataRef.current = prev;
           return newData;
       });
+  };
+
+  const triggerVictory = () => {
+    if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 500]);
+    
+    const duration = 3000;
+    const end = Date.now() + duration;
+
+    const frame = () => {
+      confetti({ particleCount: 5, angle: 60, spread: 55, origin: { x: 0 }, colors: ['#D24D57', '#B76E79', '#FFFDD0'] });
+      confetti({ particleCount: 5, angle: 120, spread: 55, origin: { x: 1 }, colors: ['#D24D57', '#B76E79', '#FFFDD0'] });
+      if (Date.now() < end) requestAnimationFrame(frame);
+    };
+    frame();
   };
 
   useEffect(() => {
@@ -217,13 +236,33 @@ const SpyDashboard = () => {
         <div className="p-8 relative">
              <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/aged-paper.png')] opacity-5 mix-blend-overlay pointer-events-none"></div>
             
+            {/* --- ZONE HEADER DYNAMIQUE : LE MOMENT DE VÉRITÉ --- */}
             <div className="mb-12 text-center relative z-10">
-                <span className="text-xs uppercase text-rose-gold/60 tracking-[0.3em] block mb-3">Sujet de l'observation</span>
-                <h2 className="text-5xl font-script text-cream mb-4 drop-shadow-md">{data.valentine}</h2>
-                <div className={`inline-flex items-center gap-2 font-medium tracking-wide px-4 py-2 rounded-lg border transition-colors duration-500 ${data.status === 'accepted' ? 'bg-green-900/30 border-green-500/50 text-green-400' : 'bg-ruby-light/10 border-ruby-light/20 text-ruby-light'}`}>
-                    {data.status === 'accepted' ? <CheckCircle2 size={18} /> : <Eye size={18} />}
-                    {data.status === 'accepted' ? 'STATUT : OUI CONFIRMÉ' : (data.viewed_at ? 'STATUT : VU (HÉSITATION)' : 'STATUT : NON LU')}
-                </div>
+                {data.status === 'accepted' ? (
+                   // VERSION VICTOIRE (Le Garçon reçoit "ELLE A DIT OUI")
+                   <div className="animate-float">
+                      <span className="text-xs uppercase text-green-400 tracking-[0.3em] block mb-3 font-bold flex items-center justify-center gap-2">
+                         <PartyPopper size={16} /> Mission Accomplie <PartyPopper size={16} />
+                      </span>
+                      <h2 className="text-5xl md:text-7xl font-script text-rose-pale mb-6 drop-shadow-[0_0_15px_rgba(255,255,255,0.3)]">
+                        Elle a dit <span className="text-ruby-light relative inline-block">OUI !</span>
+                      </h2>
+                      <div className="inline-flex items-center gap-2 font-medium tracking-wide px-6 py-3 rounded-full border border-green-500/50 bg-green-900/30 text-green-400 shadow-[0_0_20px_rgba(34,197,94,0.2)]">
+                          <CheckCircle2 size={20} />
+                          INVITATION ACCEPTÉE
+                      </div>
+                   </div>
+                ) : (
+                   // VERSION OBSERVATION (Classique)
+                   <>
+                      <span className="text-xs uppercase text-rose-gold/60 tracking-[0.3em] block mb-3">Sujet de l'observation</span>
+                      <h2 className="text-5xl font-script text-cream mb-4 drop-shadow-md">{data.valentine}</h2>
+                      <div className={`inline-flex items-center gap-2 font-medium tracking-wide px-4 py-2 rounded-lg border transition-colors duration-500 ${data.viewed_at ? 'bg-orange-900/20 border-orange-500/30 text-orange-400' : 'bg-ruby-light/10 border-ruby-light/20 text-ruby-light'}`}>
+                          <Eye size={18} />
+                          {data.viewed_at ? 'STATUT : VU (HÉSITATION...)' : 'STATUT : NON LU'}
+                      </div>
+                   </>
+                )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10">

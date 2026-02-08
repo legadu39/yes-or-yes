@@ -73,9 +73,9 @@ const Accepted = () => {
   if (!invitation) return null;
 
   const shareUrl = `${window.location.origin}/v/${invitation.id}`;
-  // ALIGNEMENT BUSINESS PLAN : Message Viral Optimisé
-  const shareTitle = `Elle a dit OUI ! ❤️`;
-  const shareText = `J'ai dit OUI... (Le bouton NON s'enfuyait) 😂 \n\nToi aussi, piège ton crush ici :`;
+  // ALIGNEMENT BUSINESS PLAN : Message Viral Optimisé pour la Valentine
+  const shareTitle = `J'ai dit OUI ! ❤️`;
+  const shareText = `J'ai dit OUI... (Le bouton NON s'enfuyait, j'avais pas le choix !) 😂 \n\nToi aussi, piège ton mec ici :`;
 
   // Fonction de partage intelligente (Growth Loop)
   const handleShare = async () => {
@@ -139,27 +139,26 @@ const Accepted = () => {
             </div>
         </div>
 
-        {/* Titre Impactant */}
+        {/* CORRECTION UX : Message adressé à la Valentine (2ème personne) */}
         <h1 className="text-6xl md:text-8xl font-script text-rose-pale mb-6 drop-shadow-lg leading-tight">
-          Elle a dit <br/>
+          Tu as dit <br/>
           <span className="text-ruby-light text-7xl md:text-9xl">OUI !</span>
         </h1>
         
         <div className="w-32 h-1 bg-gradient-to-r from-transparent via-rose-gold/50 to-transparent mx-auto mb-10"></div>
 
         <p className="text-2xl font-serif text-cream mb-12 leading-relaxed font-light">
-          C'est officiel.<br/>
-          <span className="font-medium text-ruby-light border-b border-ruby-light/30 pb-1">{invitation.valentine}</span> 
-          <span className="mx-3 text-sm opacity-50">&</span> 
-          <span className="font-medium text-ruby-light border-b border-ruby-light/30 pb-1">{invitation.sender}</span>.
+          Félicitations {invitation.valentine} !<br/>
+          <span className="font-medium text-ruby-light border-b border-ruby-light/30 pb-1">{invitation.sender}</span> est officiellement la personne la plus heureuse du monde.
+          <span className="block text-sm opacity-50 mt-2 italic">(On l'a prévenu immédiatement ❤️)</span>
         </p>
 
-        {/* Filigrane pour la capture d'écran - REBRANDING AVEC URL FORCÉE */}
+        {/* Filigrane pour la capture d'écran - ADAPTÉ POUR STORY */}
         <div className="absolute bottom-2 right-4 text-[10px] text-rose-gold/30 font-mono uppercase tracking-widest opacity-0 data-[html2canvas-ignore='false']:opacity-100">
-           YesOrYes • Preuve Certifiée
+           Preuve : J'ai craqué
         </div>
         
-        {/* AJOUT STRATÉGIQUE : URL EN GROS SUR L'IMAGE GÉNÉRÉE UNIQUEMENT */}
+        {/* URL en gros pour le viral */}
         <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 text-[12px] text-rose-gold/50 font-mono tracking-widest opacity-0 data-[html2canvas-ignore='false']:opacity-100">
            yes-or-yes-orcin.vercel.app
         </div>
@@ -174,11 +173,11 @@ const Accepted = () => {
                 className="w-full flex items-center justify-center gap-2 bg-ruby-dark text-cream py-4 rounded-xl tracking-[0.1em] text-xs uppercase font-medium border border-rose-gold/30 hover:bg-ruby-DEFAULT/90 transition-all shadow-xl"
             >
                 {copied ? <Copy size={16} /> : <Share2 size={16} />}
-                {copied ? "Lien copié !" : "Partager"}
+                {copied ? "Lien copié !" : "Annoncer la nouvelle"}
             </button>
         </div>
 
-        {/* Bouton Téléchargement Image (Nouveau) */}
+        {/* Bouton Téléchargement Image */}
         <div className="relative group cursor-pointer flex-1">
            <button 
                 onClick={handleDownloadImage}
@@ -186,7 +185,7 @@ const Accepted = () => {
                 className="w-full flex items-center justify-center gap-2 bg-rose-gold/10 text-rose-gold py-4 rounded-xl tracking-[0.1em] text-xs uppercase font-medium border border-rose-gold/20 hover:bg-rose-gold hover:text-ruby-dark transition-all"
             >
                 {isGeneratingImage ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
-                Sauver la Preuve
+                Sauver le souvenir
             </button>
         </div>
       </div>
@@ -201,7 +200,7 @@ const Accepted = () => {
         className="mt-12 group flex items-center gap-2 text-rose-pale/60 hover:text-rose-pale transition-colors font-serif italic text-sm tracking-wider"
         data-html2canvas-ignore="true"
       >
-        <span>Créer une autre invitation</span>
+        <span>À mon tour de piéger quelqu'un</span>
         <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
       </button>
     </div>

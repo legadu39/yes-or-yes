@@ -325,14 +325,14 @@ const Home = () => {
       const stripeUrl = (formData.plan === 'spy' || formData.plan === 'premium') ? STRIPE_LINKS.spy : STRIPE_LINKS.basic;
       
       // MODE PRODUCTION (Activé pour le lancement commercial)
-      // window.location.href = `${stripeUrl}?client_reference_id=${id}&redirect_url=${returnUrl}`;
+      window.location.href = `${stripeUrl}?client_reference_id=${id}&redirect_url=${returnUrl}`;
 
       // MODE TEST (Désactivé)
-      
+      /*
       console.log("🚧 MODE TEST: Bypass Stripe activé.");
       const fakeReturnUrl = `${window.location.origin}?payment_id=${id}&success=true&state=${statePayload}`;
       setTimeout(() => { window.location.href = fakeReturnUrl; }, 1500);
-      
+      */
 
     } catch (error) {
       console.error("Erreur handleSubmit:", error);

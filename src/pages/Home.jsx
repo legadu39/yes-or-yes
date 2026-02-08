@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { 
-  Eye, Sparkles, Copy, Heart, LockKeyhole, TrendingUp, CreditCard, 
-  Timer, Loader2, History, AlertTriangle, Check, Share2, RefreshCw, Shield, Clock
+  Eye, Sparkles, Copy, Heart, TrendingUp, CreditCard, 
+  Timer, Loader2, Check, Shield, RefreshCw
 } from 'lucide-react';
 
 // --- CONFIGURATION ---
@@ -258,24 +258,13 @@ const Home = () => {
         id: id, 
         s: formData.sender, 
         v: formData.valentine,
-        p: formData.plan // <--- AJOUTÉ
+        p: formData.plan 
       }));
       
-      // --- MODIFICATION TEMPORAIRE POUR TEST (BYPASS) ---
-      console.log("🚧 MODE TEST: Bypass Stripe activé. Simulation du retour de paiement...");
-      const fakeReturnUrl = `${window.location.origin}?payment_id=${id}&success=true&state=${statePayload}`;
-      
-      // Simulation d'un délai réseau pour le réalisme de l'UX
-      setTimeout(() => {
-        window.location.href = fakeReturnUrl;
-      }, 1500);
-
-      // CODE ORIGINAL (COMMENTÉ POUR LE TEST)
-      /*
       const returnUrl = encodeURIComponent(`${window.location.origin}?payment_id=${id}&success=true&state=${statePayload}`);
       const stripeUrl = (formData.plan === 'spy' || formData.plan === 'premium') ? STRIPE_LINKS.spy : STRIPE_LINKS.basic;
+      
       window.location.href = `${stripeUrl}?client_reference_id=${id}&redirect_url=${returnUrl}`;
-      */
 
     } catch (error) {
       console.error("Erreur handleSubmit:", error);
@@ -306,9 +295,6 @@ const Home = () => {
     navigator.clipboard.writeText(text);
     setCopiedField(field);
   };
-
-  const getShareUrl = (id) => `${window.location.origin}/v/${id}`;
-  const getSpyUrl = (id, token) => `${window.location.origin}/spy/${id}?token=${token}`;
 
   // --- RENDER ---
   if (status === 'success' && generatedLinks) {
@@ -421,7 +407,7 @@ const Home = () => {
         <p className="text-rose-gold text-lg font-serif italic tracking-wider">L'élégance d'une demande irréfusable.</p>
       </header>
 
-      <main className="card-valentine w-full max-w-2xl p-8 md:p-12 z-10 relative mb-10">
+      <main className="card-valentine w-full max-w-2xl p-8 md:p-12 z-10 relative mb-8">
         <form onSubmit={handleSubmit} className="space-y-10">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div className="group relative">
@@ -505,44 +491,18 @@ const Home = () => {
         </form>
       </main>
 
-      {/* HISTORIQUE LOCAL FILTRÉ */}
-      {ownedInvitations && ownedInvitations.length > 0 && status === 'idle' && (
-          <div className="w-full max-w-xl border-t border-rose-gold/10 pt-8 mb-12 relative z-10">
-              <h3 className="text-center text-rose-gold/50 text-xs uppercase tracking-widest mb-6 flex items-center justify-center gap-2">
-                  <Clock size={12} /> Vos invitations récentes
-              </h3>
-              <div className="space-y-3">
-                  {ownedInvitations.map((inv) => (
-                      <div key={inv.id} className="bg-white/5 border border-white/5 rounded-lg p-4 flex items-center justify-between hover:bg-white/10 transition-colors">
-                          <div>
-                              <div className="text-rose-pale font-medium">Pour {inv.valentine}</div>
-                              <div className="text-xs text-rose-pale/40">{new Date(inv.createdAt).toLocaleDateString()}</div>
-                          </div>
-                          <div className="flex gap-2">
-                              <button 
-                                  onClick={() => window.open(getShareUrl(inv.id), '_blank')}
-                                  className="p-2 bg-black/20 rounded-md text-rose-pale/60 hover:text-rose-pale hover:bg-black/40 transition-colors"
-                                  title="Voir l'invitation"
-                              >
-                                  <Eye size={16} />
-                              </button>
-                              
-                              {/* FILTRE STRICT : Pas de bouton espion pour BASIC */}
-                              {inv.plan !== 'basic' && (
-                                <button 
-                                    onClick={() => window.open(getSpyUrl(inv.id, inv.token), '_blank')}
-                                    className="p-2 bg-purple-500/10 rounded-md text-purple-400/60 hover:text-purple-300 hover:bg-purple-500/20 transition-colors border border-purple-500/10"
-                                    title="Dashboard Espion"
-                                >
-                                    <Shield size={16} />
-                                </button>
-                              )}
-                          </div>
-                      </div>
-                  ))}
-              </div>
-          </div>
-      )}
+      {/* FOOTER LÉGAL - RÉINTÉGRÉ */}
+      <footer className="mt-auto py-8 text-center relative z-10 w-full opacity-60 hover:opacity-100 transition-opacity">
+        <div className="flex flex-wrap justify-center gap-4 md:gap-8 text-[10px] uppercase tracking-widest text-rose-gold/50 font-serif">
+            <Link to="/legal/terms" className="hover:text-rose-gold transition-colors">CGV</Link>
+            <Link to="/legal/privacy" className="hover:text-rose-gold transition-colors">Confidentialité</Link>
+            <Link to="/legal/mentions" className="hover:text-rose-gold transition-colors">Mentions Légales</Link>
+            <a href="mailto:contact@yesoryes.com" className="hover:text-rose-gold transition-colors">Contact</a>
+        </div>
+        <p className="mt-4 text-[9px] text-ruby-light/30">
+            YesOrYes © {new Date().getFullYear()} • Fait avec Amour
+        </p>
+      </footer>
 
       {activeNotif && (
         <div className="fixed bottom-6 left-6 z-50 flex items-center gap-4 bg-ruby-dark/90 border border-rose-gold/30 backdrop-blur-md px-4 py-3 rounded-lg shadow-xl animate-slide-up max-w-[300px]">

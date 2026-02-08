@@ -264,15 +264,8 @@ const Home = () => {
       const returnUrl = encodeURIComponent(`${window.location.origin}?payment_id=${id}&success=true&state=${statePayload}`);
       const stripeUrl = (formData.plan === 'spy' || formData.plan === 'premium') ? STRIPE_LINKS.spy : STRIPE_LINKS.basic;
       
-      // MODE PRODUCTION (Décommentez pour la mise en ligne)
+      // MODE PRODUCTION
       window.location.href = `${stripeUrl}?client_reference_id=${id}&redirect_url=${returnUrl}`;
-
-      // MODE TEST (BYPASS) - À supprimer en production
-      /*
-      console.log("🚧 MODE TEST: Bypass Stripe activé.");
-      const fakeReturnUrl = `${window.location.origin}?payment_id=${id}&success=true&state=${statePayload}`;
-      setTimeout(() => { window.location.href = fakeReturnUrl; }, 1500);
-      */
 
     } catch (error) {
       console.error("Erreur handleSubmit:", error);
@@ -410,9 +403,18 @@ const Home = () => {
         </p>
       </div>
 
-      <header className="text-center mb-10 relative z-10">
+      <header className="text-center mb-10 relative z-10 max-w-2xl px-4">
         <h1 className="text-7xl md:text-8xl font-script text-rose-pale mb-4 drop-shadow-lg">YesOrYes</h1>
-        <p className="text-rose-gold text-lg font-serif italic tracking-wider">L'élégance d'une demande irréfusable.</p>
+        
+        {/* CORRECTION POINT AVEUGLE : EXPLICATION DU CONCEPT */}
+        <p className="text-cream/90 text-sm md:text-base font-serif italic mb-6 leading-relaxed border-l-2 border-rose-gold/50 pl-4 py-2 bg-ruby-light/10 rounded-r-lg shadow-lg">
+          Envoyez le lien. Le bouton "NON" s'enfuira quand elle essaiera de cliquer. <br/>
+          <span className="text-rose-gold/70 text-xs uppercase tracking-widest not-italic font-bold">
+            (Regardez-la galérer...)
+          </span>
+        </p>
+
+        <p className="text-rose-gold text-lg font-serif italic tracking-wider opacity-80">L'élégance d'une demande irréfusable.</p>
       </header>
 
       <main className="card-valentine w-full max-w-2xl p-8 md:p-12 z-10 relative mb-8">
@@ -489,7 +491,16 @@ const Home = () => {
             disabled={status !== 'idle' && status !== 'verifying_long'}
             className="w-full btn-ruby py-4 rounded-lg tracking-[0.2em] text-sm uppercase font-medium transition-all shadow-lg hover:shadow-rose-gold/20 relative overflow-hidden"
           >
-            {status === 'idle' && <span className="flex items-center justify-center gap-3">Sceller l'invitation <Heart size={16} fill="currentColor" /></span>}
+            {status === 'idle' && (
+                // STRATÉGIE PSYCHOLOGIQUE : BOUTON DYNAMIQUE
+                <span className="flex items-center justify-center gap-3">
+                    {formData.plan === 'spy' ? (
+                        <>Inviter + Activer le Mouchard <Shield size={16} fill="currentColor" /></>
+                    ) : (
+                        <>Sceller l'invitation <Heart size={16} fill="currentColor" /></>
+                    )}
+                </span>
+            )}
             {status === 'processing' && <span className="flex items-center justify-center gap-3 animate-pulse">Création...</span>}
             {status === 'paying' && <span className="flex items-center justify-center gap-3"><CreditCard size={16} className="animate-bounce" /> Redirection...</span>}
             {status === 'verifying' && <span className="flex items-center justify-center gap-3"><Loader2 size={16} className="animate-spin" /> Validation Bancaire...</span>}
@@ -499,7 +510,7 @@ const Home = () => {
         </form>
       </main>
 
-      {/* FOOTER LÉGAL - CORRIGÉ (URL FRANÇAISES) */}
+      {/* FOOTER LÉGAL */}
       <footer className="mt-auto py-8 text-center relative z-10 w-full opacity-60 hover:opacity-100 transition-opacity">
         <div className="flex flex-wrap justify-center gap-4 md:gap-8 text-[10px] uppercase tracking-widest text-rose-gold/50 font-serif">
             <Link to="/legal/cgv" className="hover:text-rose-gold transition-colors">CGV</Link>

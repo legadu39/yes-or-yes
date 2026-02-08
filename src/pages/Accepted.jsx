@@ -73,7 +73,7 @@ const Accepted = () => {
   if (!invitation) return null;
 
   const shareUrl = `${window.location.origin}/v/${invitation.id}`;
-  // ALIGNEMENT BUSINESS PLAN : Message Viral Spécifique
+  // ALIGNEMENT BUSINESS PLAN : Message Viral Optimisé
   const shareTitle = `Elle a dit OUI ! ❤️`;
   const shareText = `J'ai dit OUI... (Le bouton NON s'enfuyait) 😂 \n\nToi aussi, piège ton crush ici :`;
 
@@ -154,9 +154,14 @@ const Accepted = () => {
           <span className="font-medium text-ruby-light border-b border-ruby-light/30 pb-1">{invitation.sender}</span>.
         </p>
 
-        {/* Filigrane pour la capture d'écran - REBRANDING */}
+        {/* Filigrane pour la capture d'écran - REBRANDING AVEC URL FORCÉE */}
         <div className="absolute bottom-2 right-4 text-[10px] text-rose-gold/30 font-mono uppercase tracking-widest opacity-0 data-[html2canvas-ignore='false']:opacity-100">
            YesOrYes • Preuve Certifiée
+        </div>
+        
+        {/* AJOUT STRATÉGIQUE : URL EN GROS SUR L'IMAGE GÉNÉRÉE UNIQUEMENT */}
+        <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 text-[12px] text-rose-gold/50 font-mono tracking-widest opacity-0 data-[html2canvas-ignore='false']:opacity-100">
+           yes-or-yes-orcin.vercel.app
         </div>
       </div>
 

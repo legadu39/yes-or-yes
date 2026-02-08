@@ -2,9 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { 
-  Eye, Sparkles, Copy, Heart, TrendingUp, CreditCard, Timer, 
-  Loader2, Check, Shield, RefreshCw, PartyPopper, Lock, 
-  ArrowRight, ShieldCheck, Send 
+  Eye, Sparkles, Copy, Heart, TrendingUp, CreditCard, 
+  Timer, Loader2, Check, Shield, RefreshCw, PartyPopper, Lock
 } from 'lucide-react';
 
 // --- CONFIGURATION ---
@@ -17,7 +16,7 @@ const FAKE_NOTIFICATIONS = [
 ];
 
 const STRIPE_LINKS = {
-  basic: "https://buy.stripe.com/cNi6oG0to3T51yKcg36Vq01",
+  basic: "https://buy.stripe.com/cNi6oG0to3T51yKcg36Vq01", 
   spy: "https://buy.stripe.com/8x28wOcc6gFRfpAdk76Vq02"
 };
 
@@ -25,20 +24,20 @@ const Home = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { 
-    createInvitation, getSpyReport, verifyPaymentStatus, 
-    getPublicInvitation, getOwnedInvitations, saveDraft, recoverDraft 
+    createInvitation, 
+    getSpyReport, 
+    verifyPaymentStatus, 
+    getPublicInvitation, 
+    getOwnedInvitations,
+    saveDraft, 
+    recoverDraft
   } = useApp();
 
   // --- ÉTATS GLOBAUX ---
-  const [formData, setFormData] = useState({
-    sender: '',
-    valentine: '',
-    plan: 'spy'
-  });
-
+  const [formData, setFormData] = useState({ sender: '', valentine: '', plan: 'spy' });
   const [generatedLinks, setGeneratedLinks] = useState(null);
   // Status: idle | processing | paying | verifying | verifying_long | success | error
-  const [status, setStatus] = useState('idle');
+  const [status, setStatus] = useState('idle'); 
   const [activeNotif, setActiveNotif] = useState(null);
   const [copiedField, setCopiedField] = useState(null);
   const [mounted, setMounted] = useState(false);
@@ -54,8 +53,8 @@ const Home = () => {
   // 1. PERSISTANCE BROUILLON (Anti-Amnésie)
   useEffect(() => {
     if (status === 'idle') {
-      const draft = recoverDraft();
-      if (draft) setFormData(draft);
+        const draft = recoverDraft();
+        if (draft) setFormData(draft);
     }
   }, []);
 
@@ -71,16 +70,16 @@ const Home = () => {
 
     // Cas A : Retour direct de Stripe
     if (urlId && !generatedLinks && (fromStripe || stateParam)) {
-      handlePaymentReturn(urlId, stateParam);
+        handlePaymentReturn(urlId, stateParam);
     } 
     // Cas B : Rafraîchissement page ou lien direct sans params Stripe
     else if (urlId && !generatedLinks) {
-      handleBackgroundCheck(urlId);
+        handleBackgroundCheck(urlId);
     }
     // Cas C : Perte de contexte Stripe (Fallback)
     else if (fromStripe && !urlId && !generatedLinks) {
-      console.log("⚠️ Retour Stripe sans ID explicite. Tentative de restauration heuristique.");
-      restoreLastOrder();
+       console.log("⚠️ Retour Stripe sans ID explicite. Tentative de restauration heuristique.");
+       restoreLastOrder();
     }
   }, [searchParams]);
 
@@ -97,47 +96,47 @@ const Home = () => {
     const MAX_CHECKS = 120; // 10 minutes de surveillance
 
     const checkLiveStatus = async () => {
-      try {
-        checkCount++;
-        const serverData = await getPublicInvitation(currentId);
-        
-        // DÉTECTION VICTOIRE
-        if (serverData && serverData.status === 'accepted') {
-          // 🎉 TRIGGER UI
-          setAnswerReceived({
-            name: serverData.valentine || formData.valentine,
-            timestamp: new Date()
-          });
-          
-          // 📳 HAPTIC FEEDBACK
-          if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 400]);
-          
-          clearInterval(pollingIntervalRef.current);
-        }
+        try {
+            checkCount++;
+            const serverData = await getPublicInvitation(currentId);
 
-        if (checkCount >= MAX_CHECKS) clearInterval(pollingIntervalRef.current);
-      } catch (e) {
-        console.warn("Silent polling error", e);
-      }
+            // DÉTECTION VICTOIRE
+            if (serverData && serverData.status === 'accepted') {
+                // 🎉 TRIGGER UI
+                setAnswerReceived({
+                    name: serverData.valentine || formData.valentine,
+                    timestamp: new Date()
+                });
+                
+                // 📳 HAPTIC FEEDBACK
+                if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 400]);
+
+                clearInterval(pollingIntervalRef.current);
+            }
+
+            if (checkCount >= MAX_CHECKS) clearInterval(pollingIntervalRef.current);
+        } catch (e) {
+            console.warn("Silent polling error", e);
+        }
     };
 
     pollingIntervalRef.current = setInterval(checkLiveStatus, 5000);
 
     // Visibility API : Vérifier immédiatement si l'utilisateur revient sur l'onglet
     const handleVisibilityChange = () => {
-      if (!document.hidden && !answerReceived) {
-        console.log("👀 Retour utilisateur -> Check immédiat");
-        checkLiveStatus();
-      }
+        if (!document.hidden && !answerReceived) {
+            console.log("👀 Retour utilisateur -> Check immédiat");
+            checkLiveStatus();
+        }
     };
-
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
-      if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
+        if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [status, generatedLinks, answerReceived]);
+
 
   // --- LOGIQUE MÉTIER ---
 
@@ -152,19 +151,20 @@ const Home = () => {
   const handleBackgroundCheck = async (urlId) => {
     const isPaid = await verifyPaymentStatus(urlId);
     if (isPaid) {
-      const serverData = await getPublicInvitation(urlId);
-      const owned = getOwnedInvitations();
-      const foundLocal = owned.find(i => i.id === urlId);
-
-      // Fusion des données serveur et locales
-      const finalData = { ...foundLocal, ...serverData, id: urlId };
-      displaySuccess(finalData, foundLocal?.token);
+        const serverData = await getPublicInvitation(urlId);
+        const owned = getOwnedInvitations();
+        const foundLocal = owned.find(i => i.id === urlId);
+        
+        // Fusion des données serveur et locales
+        const finalData = { ...foundLocal, ...serverData, id: urlId };
+        displaySuccess(finalData, foundLocal?.token);
     }
   };
 
   // Traitement retour Stripe (avec décodage State)
   const handlePaymentReturn = async (paymentId, stateParam) => {
     console.log("Traitement retour paiement pour:", paymentId);
+    
     const owned = getOwnedInvitations();
     let foundToken = null;
     let recoveredData = null;
@@ -178,46 +178,44 @@ const Home = () => {
           recoveredData = { sender: decoded.s, valentine: decoded.v, plan: decoded.p };
           repairLocalMemory(paymentId, foundToken, recoveredData);
         }
-      } catch (e) {
-        console.error("Échec décodage state URL", e);
-      }
+      } catch (e) { console.error("Échec décodage state URL", e); }
     }
 
     // 2. Recherche locale (Fallback)
     if (!foundToken) {
-      const foundLocal = owned.find(i => i.id === paymentId);
-      if (foundLocal) {
-        foundToken = foundLocal.token;
-        recoveredData = foundLocal;
-      }
+        const foundLocal = owned.find(i => i.id === paymentId);
+        if (foundLocal) {
+            foundToken = foundLocal.token;
+            recoveredData = foundLocal;
+        }
     }
 
     // 3. Vérité Serveur
     try {
-      const serverData = await getPublicInvitation(paymentId);
-      
-      if (serverData && serverData.payment_status === 'paid') {
-        // Fix ID reconciliation (Stripe ID vs UUID)
-        if (!foundToken) {
-            const realLocal = owned.find(i => i.id === serverData.id);
-            if (realLocal) foundToken = realLocal.token;
+        const serverData = await getPublicInvitation(paymentId);
+        
+        if (serverData && serverData.payment_status === 'paid') {
+            // Fix ID reconciliation (Stripe ID vs UUID)
+            if (!foundToken) {
+                const realLocal = owned.find(i => i.id === serverData.id);
+                if (realLocal) foundToken = realLocal.token;
+            }
+
+            const finalInvite = {
+                id: serverData.id,
+                sender: serverData.sender || recoveredData?.sender || "Vous",
+                valentine: serverData.valentine || recoveredData?.valentine || "...",
+                plan: serverData.plan // Source de vérité pour le plan
+            };
+
+            repairLocalMemory(finalInvite.id, foundToken, finalInvite);
+            displaySuccess(finalInvite, foundToken);
+        } else {
+            // Paiement pas encore propagé -> Polling
+            waitForServerValidation(paymentId, { ...recoveredData, id: paymentId });
         }
-
-        const finalInvite = {
-            id: serverData.id,
-            sender: serverData.sender || recoveredData?.sender || "Vous",
-            valentine: serverData.valentine || recoveredData?.valentine || "...",
-            plan: serverData.plan // Source de vérité pour le plan
-        };
-
-        repairLocalMemory(finalInvite.id, foundToken, finalInvite);
-        displaySuccess(finalInvite, foundToken);
-      } else {
-        // Paiement pas encore propagé -> Polling
-        waitForServerValidation(paymentId, { ...recoveredData, id: paymentId });
-      }
     } catch (e) {
-      waitForServerValidation(paymentId, recoveredData); // Fallback total
+        waitForServerValidation(paymentId, recoveredData); // Fallback total
     }
   };
 
@@ -253,8 +251,9 @@ const Home = () => {
 
         const finalData = { ...contextData, id: serverData.id, plan: serverData.plan };
         if (finalToken) repairLocalMemory(serverData.id, finalToken, finalData);
-        
+
         displaySuccess(finalData, finalToken);
+
       } else if (attempt < maxAttempts) {
         const nextDelay = delays[Math.min(attempt, delays.length - 1)] || 5000;
         setTimeout(poll, nextDelay);
@@ -267,23 +266,22 @@ const Home = () => {
 
   const displaySuccess = (invite, token) => {
     if (!invite) return;
-
-    setFormData({
-      sender: invite.sender || "Vous",
-      valentine: invite.valentine || "...",
-      plan: invite.plan || 'spy'
+    
+    setFormData({ 
+        sender: invite.sender || "Vous", 
+        valentine: invite.valentine || "...", 
+        plan: invite.plan || 'spy' 
     });
-
+    
     // Le lien espion n'est généré que si on a le token (sécurité)
     const showSpyLink = token ? true : false;
-    setMonitoringToken(token);
+    setMonitoringToken(token); // Sauvegarde pour usage interne
 
-    // Sauvegarde pour usage interne
     setGeneratedLinks({
       valentine: `${window.location.origin}/v/${invite.id}`,
       spy: showSpyLink ? `${window.location.origin}/spy/${invite.id}?token=${token}` : null
     });
-
+    
     setStatus('success');
   };
 
@@ -297,6 +295,7 @@ const Home = () => {
   };
 
   // --- ACTIONS UI ---
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.sender.trim() || !formData.valentine.trim()) return;
@@ -313,38 +312,36 @@ const Home = () => {
       if (!result || !result.id) throw new Error("Erreur création");
 
       const { id, token } = result;
-
       setStatus('paying');
 
       // State Payload : On encode tout pour survivre au redirect Stripe
-      const statePayload = btoa(JSON.stringify({
-        t: token,
-        id: id,
-        s: formData.sender,
-        v: formData.valentine,
-        p: formData.plan
+      const statePayload = btoa(JSON.stringify({ 
+        t: token, id: id, s: formData.sender, v: formData.valentine, p: formData.plan 
       }));
-
-      // NOTE: En production, décommenter la redirection Stripe
-      // const returnUrl = encodeURIComponent(`${window.location.origin}?payment_id=${id}&success=true&state=${statePayload}`);
-      // const stripeUrl = (formData.plan === 'spy' || formData.plan === 'premium') ? STRIPE_LINKS.spy : STRIPE_LINKS.basic;
+      
+      const returnUrl = encodeURIComponent(`${window.location.origin}?payment_id=${id}&success=true&state=${statePayload}`);
+      const stripeUrl = (formData.plan === 'spy' || formData.plan === 'premium') ? STRIPE_LINKS.spy : STRIPE_LINKS.basic;
+      
       // window.location.href = `${stripeUrl}?client_reference_id=${id}&redirect_url=${returnUrl}`;
 
-      // --- MODE TEST ACTUEL (BYPASS) ---
+      // --- NOUVEAU CODE (MODE TEST BYPASS) ---
       console.log("🚀 MODE TEST ACTIVÉ : Paiement ignoré");
       
+      // On simule l'objet invité comme s'il revenait du serveur
       const fakeInvite = {
-        id: id,
-        sender: formData.sender,
-        valentine: formData.valentine,
-        plan: formData.plan,
-        payment_status: 'paid'
+          id: id,
+          sender: formData.sender,
+          valentine: formData.valentine,
+          plan: formData.plan,
+          payment_status: 'paid' // On force le statut payé
       };
+
+      // On force la sauvegarde locale et l'affichage du succès
+      // Note: Il faut appeler repairLocalMemory si elle est accessible, 
+      // sinon on simule juste l'affichage.
       
-      // Simulation délai
-      setTimeout(() => {
-        displaySuccess(fakeInvite, token);
-      }, 1500);
+      // Ici on appelle directement la fonction d'affichage du succès
+      displaySuccess(fakeInvite, token);
 
     } catch (error) {
       console.error("Erreur handleSubmit:", error);
@@ -362,12 +359,8 @@ const Home = () => {
           url: text
         });
         setCopiedField(field);
-      } catch (err) {
-        copyToClipboard(text, field);
-      }
-    } else {
-      copyToClipboard(text, field);
-    }
+      } catch (err) { copyToClipboard(text, field); }
+    } else { copyToClipboard(text, field); }
     setTimeout(() => setCopiedField(null), 2000);
   };
 
@@ -383,239 +376,296 @@ const Home = () => {
       setActiveNotif(randomNotif);
       setTimeout(() => setActiveNotif(null), 6000);
     };
-    
     const t1 = setTimeout(showNotification, 2000);
     const t2 = setInterval(showNotification, 18000);
-    
-    return () => {
-      clearTimeout(t1);
-      clearInterval(t2);
-    };
+    return () => { clearTimeout(t1); clearInterval(t2); };
   }, []);
 
   // --- RENDU ---
 
-  // VUE SUCCÈS - DESIGN REVISITÉ (Rouge Love / Gold)
+  // VUE SUCCÈS
   if (status === 'success' && generatedLinks) {
     return (
-      <div className="min-h-screen w-full bg-[#3d0b0b] text-red-50 flex flex-col items-center justify-center p-4 relative overflow-hidden font-sans">
+      <div className="min-h-screen bg-ruby-dark flex flex-col items-center justify-center p-6 animate-fade-in relative z-10 overflow-hidden">
         
-        {/* Fond d'ambiance */}
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-[#5e0f0f] via-[#2b0505] to-black opacity-80 pointer-events-none"></div>
-        <div className="absolute inset-0 opacity-20 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] pointer-events-none mix-blend-overlay"></div>
+        {/* Background Effects */}
+        <div className="absolute inset-0 pointer-events-none">
+           <div className="absolute top-[-10%] right-[-10%] w-[500px] h-[500px] bg-rose-gold/10 rounded-full blur-[120px] animate-pulse-slow"></div>
+        </div>
 
-        <div className="relative z-10 w-full max-w-lg animate-in fade-in zoom-in duration-500">
+        <div className="max-w-2xl w-full bg-ruby-DEFAULT/10 backdrop-blur-md border border-rose-gold/20 rounded-3xl p-8 text-center shadow-2xl relative">
           
-          <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-red-900/30 border border-red-500/30 mb-6 shadow-[0_0_30px_rgba(220,38,38,0.4)]">
-                <div className="relative">
-                    <Heart className="w-10 h-10 text-red-500 fill-red-500 animate-pulse" />
-                    <div className="absolute inset-0 bg-red-500 blur-xl opacity-50 animate-pulse"></div>
-                </div>
+          <div className="flex justify-center mb-6">
+            <div className="w-16 h-16 bg-green-500/20 rounded-full flex items-center justify-center border border-green-500/50 shadow-[0_0_30px_rgba(34,197,94,0.3)]">
+              <Check className="text-green-400 w-8 h-8" />
             </div>
-            <h1 className="text-4xl md:text-5xl font-serif text-transparent bg-clip-text bg-gradient-to-br from-red-100 via-red-200 to-red-400 drop-shadow-sm">
-              Invitation Prête
-            </h1>
-            <p className="mt-3 text-red-200/60 font-light text-lg">
-              Le destin de <span className="font-semibold text-red-100">{formData.valentine}</span> est entre vos mains.
-            </p>
           </div>
 
-          {/* --- INTELLIGENCE : NOTIFICATION "ELLE A DIT OUI" STYLE PREMIUM --- */}
+          <h2 className="text-3xl font-script text-rose-pale mb-2">Invitation Prête</h2>
+          <p className="text-rose-pale/60 mb-8">Le destin de {formData.valentine} est entre vos mains.</p>
+
+          {/* --- INTELLIGENCE : NOTIFICATION LIVE "ELLE A DIT OUI" --- */}
           {answerReceived && (
-            <div className="mb-8 relative overflow-hidden rounded-xl border border-amber-500/50 bg-gradient-to-br from-[#4a0404] to-[#2b0000] p-6 shadow-[0_0_40px_-10px_rgba(180,83,9,0.5)] animate-in slide-in-from-top-5 duration-700">
-               <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/diagmonds-light.png')] opacity-10"></div>
-               <div className="relative z-10 flex flex-col items-center text-center">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Sparkles className="w-5 h-5 text-amber-400" />
-                    <span className="text-amber-400 font-bold tracking-widest text-xs uppercase">Mission Réussie</span>
-                    <Sparkles className="w-5 h-5 text-amber-400" />
+              <div className="mb-8 p-6 bg-gradient-to-r from-emerald-600 to-green-600 rounded-xl shadow-xl shadow-green-900/50 animate-bounce flex flex-col items-center text-center border border-white/20 relative overflow-hidden group transform hover:scale-105 transition-transform">
+                  <div className="absolute inset-0 bg-white/10 transform -skew-x-12 -translate-x-full group-hover:translate-x-full transition-transform duration-700"></div>
+                  <div className="flex items-center gap-3 mb-2">
+                    <PartyPopper className="w-8 h-8 text-white animate-wiggle" />
+                    <span className="text-white font-bold text-2xl tracking-wide">ELLE A DIT OUI !</span>
                   </div>
-                  <h2 className="text-3xl font-serif text-white mb-2 drop-shadow-md">
-                    ELLE A DIT OUI !
-                  </h2>
-                  <p className="text-red-200/80 text-sm mb-4">
+                  <p className="text-white/90 text-sm mb-4">
                     {answerReceived.name} a accepté votre invitation à l'instant.
                   </p>
                   
+                  {/* Bouton pour voir le détail si on a le token */}
                   {monitoringToken && (
-                    <button 
-                        onClick={() => navigate(`/spy/${generatedLinks.valentine.split('/').pop()}?token=${monitoringToken}`)}
-                        className="group flex items-center gap-2 px-6 py-2 bg-amber-500 hover:bg-amber-400 text-[#2b0000] font-bold rounded-full transition-all shadow-lg hover:shadow-amber-500/20"
-                    >
-                        <Eye className="w-4 h-4" />
-                        <span>Voir sa réaction</span>
-                        <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                    </button>
+                       <button 
+                         onClick={() => window.open(generatedLinks.spy, '_blank')}
+                         className="bg-white text-green-700 px-6 py-2 rounded-full font-bold text-sm shadow-lg hover:bg-green-50 transition-colors flex items-center gap-2"
+                       >
+                         <Eye size={16} /> Voir sa réaction
+                       </button>
                   )}
-               </div>
-            </div>
+              </div>
           )}
 
-          {/* LIEN VALENTINE */}
-          <div className="bg-black/40 backdrop-blur-md rounded-2xl border border-red-500/20 p-6 mb-6 shadow-xl">
-            <div className="flex items-center gap-2 mb-3 text-red-200">
-                <Heart className="w-4 h-4 text-red-400" />
-                <span className="text-sm font-medium uppercase tracking-wider opacity-70">Lien pour {formData.valentine}</span>
-            </div>
-            
-            <div 
+          {/* LIEN PUBLIC */}
+          <div className="bg-ruby-dark/50 rounded-xl p-6 mb-6 border border-rose-gold/30">
+            <h3 className="text-rose-gold font-serif mb-4 flex items-center justify-center gap-2">
+              <Heart size={18} className="fill-rose-gold" />
+              Lien pour {formData.valentine}
+            </h3>
+            <div className="flex gap-2 items-center bg-black/30 p-3 rounded-lg border border-rose-gold/10">
+              <code className="text-rose-pale/80 text-sm flex-1 truncate font-mono select-all">
+                {generatedLinks.valentine}
+              </code>
+              <button 
                 onClick={() => handleShare(generatedLinks.valentine, 'valentine')}
-                className="group relative flex items-center bg-[#1a0505] border border-red-900/50 rounded-xl p-4 cursor-pointer hover:border-red-500/50 transition-colors"
-            >
-                <div className="flex-1 min-w-0 mr-4">
-                    <p className="text-red-100 font-mono text-sm truncate opacity-90">
-                        {generatedLinks.valentine}
-                    </p>
-                </div>
-                <div className="p-2 bg-red-500/10 rounded-lg group-hover:bg-red-500/20 transition-colors">
-                    {copiedField === 'valentine' ? <ShieldCheck className="w-5 h-5 text-green-400" /> : <Copy className="w-5 h-5 text-red-400" />}
-                </div>
+                className="p-2 hover:bg-rose-gold/20 rounded-md transition-colors text-rose-gold"
+              >
+                {copiedField === 'valentine' ? <Check size={18} className="text-green-400" /> : <Copy size={18} />}
+              </button>
             </div>
-            <p className="text-center text-xs text-red-200/40 mt-3 flex items-center justify-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-                En attente de clic...
-            </p>
+            <div className="mt-2 flex justify-center">
+                 <span className="flex items-center gap-1 text-[10px] text-green-400 bg-green-400/10 px-2 py-0.5 rounded-full border border-green-400/20">
+                    <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></div>
+                    En attente de clic...
+                 </span>
+            </div>
           </div>
 
-          {/* LIEN ESPION (SI DISPO) */}
-          {generatedLinks.spy && (
-            <div className="bg-gradient-to-b from-[#1a0000] to-black rounded-2xl border border-red-500/20 p-6 shadow-2xl relative overflow-hidden group">
-                <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
-                    <Lock className="w-24 h-24 text-red-500" />
-                </div>
-
-                <div className="flex items-center gap-2 mb-3">
-                    <div className="bg-red-500/20 p-1 rounded">
-                        <Lock className="w-3 h-3 text-red-500" />
-                    </div>
-                    <span className="text-sm font-bold text-red-500 uppercase tracking-wider">Votre Tableau de Bord Secret</span>
-                </div>
-
-                <p className="text-sm text-red-200/60 mb-4 leading-relaxed">
-                    Accédez aux preuves : Heure de lecture, hésitations, clics sur "NON". 
-                    <br/><span className="text-red-400 italic">Gardez ce lien privé.</span>
-                </p>
-
-                <div 
-                    onClick={() => handleShare(generatedLinks.spy, 'spy')}
-                    className="flex items-center bg-black/60 border border-red-900/30 rounded-xl p-3 cursor-pointer hover:border-red-500/30 transition-colors"
-                >
-                    <div className="flex-1 min-w-0 mr-3">
-                        <p className="text-red-100/50 font-mono text-xs truncate">
-                            {generatedLinks.spy}
-                        </p>
-                    </div>
-                    {copiedField === 'spy' ? <ShieldCheck className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4 text-red-500/70" />}
-                </div>
-
+          {/* DASHBOARD ESPION (Différencié selon Plan) */}
+          {generatedLinks.spy ? (
+            <div className="bg-black/40 rounded-xl p-6 mb-8 border border-purple-500/30 relative overflow-hidden group">
+              <div className="absolute top-0 right-0 bg-purple-500/20 px-3 py-1 rounded-bl-lg text-[10px] text-purple-300 uppercase tracking-widest font-bold border-l border-b border-purple-500/20">
+                {formData.plan === 'spy' || formData.plan === 'premium' ? 'Activé' : 'Limité'}
+              </div>
+              
+              <h3 className="text-purple-300 font-serif mb-4 flex items-center justify-center gap-2">
+                <Shield size={18} />
+                {formData.plan === 'spy' || formData.plan === 'premium' ? 'Espace Espion' : 'Suivi Basique'}
+              </h3>
+              
+              <div className="flex gap-2 items-center bg-black/50 p-3 rounded-lg border border-purple-500/20">
+                <code className="text-purple-200/60 text-sm flex-1 truncate font-mono select-all blur-[2px] group-hover:blur-0 transition-all duration-500">
+                  {generatedLinks.spy}
+                </code>
                 <button 
-                    onClick={() => window.open(generatedLinks.spy, '_blank')}
-                    className="mt-4 w-full py-3 rounded-lg bg-red-900/20 hover:bg-red-900/40 border border-red-500/30 text-red-300 font-semibold text-sm transition-all flex items-center justify-center gap-2"
+                  onClick={() => handleShare(generatedLinks.spy, 'spy')}
+                  className="p-2 hover:bg-purple-500/20 rounded-md transition-colors text-purple-400"
                 >
-                    <Eye className="w-4 h-4" />
-                    Ouvrir mon tableau de bord
+                  {copiedField === 'spy' ? <Check size={18} className="text-green-400" /> : <Copy size={18} />}
                 </button>
+              </div>
+              
+              <div className="flex justify-center gap-4 mt-4">
+                  <button
+                      onClick={() => window.open(generatedLinks.spy, '_blank')}
+                      className="flex items-center gap-2 px-4 py-2 bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 text-sm rounded-full transition-all border border-purple-500/30"
+                  >
+                      <Eye size={14} /> Ouvrir le Dashboard
+                  </button>
+              </div>
             </div>
+          ) : (
+            // UPSELL si Plan Basic (Source 2 Logic)
+             <div className="bg-gradient-to-br from-gray-900 to-black rounded-xl p-6 mb-8 border border-white/10 relative overflow-hidden">
+                <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2 text-gray-400">
+                        <Lock size={18} /> <span className="font-serif">Mode Espion Verrouillé</span>
+                    </div>
+                    <span className="text-[10px] bg-gray-700 text-gray-300 px-2 py-0.5 rounded">BASIC</span>
+                </div>
+                <p className="text-xs text-gray-500 mb-4">
+                    Vous ne saurez pas combien de fois elle a hésité ou cliqué sur "NON".
+                </p>
+                <a
+                    href={`${STRIPE_LINKS.spy}?client_reference_id=${generatedLinks.valentine.split('/').pop()}`}
+                    className="flex w-full items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-purple-900 to-purple-800 hover:brightness-110 text-purple-100 text-sm rounded-lg transition-all border border-purple-500/30 shadow-lg"
+                >
+                    <Sparkles size={14} /> Débloquer le Carnet Secret (2.50€)
+                </a>
+             </div>
           )}
 
-          <div className="mt-8 text-center">
-             <p className="text-xs text-red-200/30 font-light">
-                Faites votre demande avant le 14 Février. <br/> 
-                Les données s'autodétruisent après 30 jours.
-             </p>
-          </div>
+          <button 
+            onClick={() => {
+                setStatus('idle');
+                setGeneratedLinks(null);
+                setAnswerReceived(null);
+                setFormData({ ...formData, valentine: '' });
+            }}
+            className="text-rose-pale/50 hover:text-rose-pale text-sm underline underline-offset-4 transition-colors"
+          >
+            Créer une autre invitation
+          </button>
         </div>
-
-        {/* NOTIFICATIONS FLOTTANTES */}
-        {activeNotif && (
-          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 w-max max-w-[90%] bg-black/80 backdrop-blur-xl border border-red-500/20 px-4 py-3 rounded-full flex items-center gap-3 shadow-2xl animate-in slide-in-from-bottom-5 fade-in duration-300 z-50">
-            <div className="relative">
-                <Heart className="w-4 h-4 text-red-500 fill-red-500" />
-                <span className="absolute -top-1 -right-1 flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
-                </span>
-            </div>
-            <div className="text-xs text-red-100">
-              <span className="font-bold">{activeNotif.name}</span> {activeNotif.action}
-              <span className="text-red-200/40 ml-2 border-l border-red-200/20 pl-2">{activeNotif.time}</span>
-            </div>
-          </div>
-        )}
       </div>
     );
   }
 
-  // VUE CHARGEMENT / FORMULAIRE (Code identique pour la création, juste le background mis à jour pour cohérence)
+  // VUE FORMULAIRE
   return (
-    <div className="min-h-screen w-full bg-[#3d0b0b] text-red-50 flex flex-col items-center justify-center p-4 relative overflow-hidden font-sans">
+    <div className={`min-h-screen bg-ruby-dark p-4 flex flex-col items-center justify-center relative overflow-x-hidden pt-16 ${mounted ? 'opacity-100' : 'opacity-0'} transition-opacity duration-1000`}>
       
-      {/* Fond animé subtil */}
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-[#4a0909] via-[#1a0000] to-black opacity-90"></div>
-      
-      <div className="relative z-10 w-full max-w-md">
-        <div className="text-center mb-10">
-            <h1 className="text-4xl font-serif text-white mb-2 drop-shadow-[0_2px_10px_rgba(220,38,38,0.5)]">YesOrYes</h1>
-            <p className="text-red-200/60 text-sm tracking-widest uppercase">Agence de rencontres confidentielles</p>
-        </div>
-
-        <div className="bg-black/40 backdrop-blur-xl rounded-2xl border border-red-500/10 p-8 shadow-2xl ring-1 ring-white/5">
-            <form onSubmit={handleSubmit} className="space-y-6">
-                <div>
-                    <label className="block text-xs font-bold text-red-300 uppercase tracking-wider mb-2 ml-1">Votre Nom de code</label>
-                    <input 
-                        type="text" 
-                        value={formData.sender}
-                        onChange={(e) => setFormData({...formData, sender: e.target.value})}
-                        placeholder="Ex: L'Admirateur Secret"
-                        className="w-full bg-[#1a0505] border border-red-900/50 rounded-xl px-4 py-3 text-red-100 placeholder-red-900/50 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition-all"
-                    />
-                </div>
-
-                <div>
-                    <label className="block text-xs font-bold text-red-300 uppercase tracking-wider mb-2 ml-1">La Cible (Valentin/e)</label>
-                    <input 
-                        type="text" 
-                        value={formData.valentine}
-                        onChange={(e) => setFormData({...formData, valentine: e.target.value})}
-                        placeholder="Ex: Julie"
-                        className="w-full bg-[#1a0505] border border-red-900/50 rounded-xl px-4 py-3 text-red-100 placeholder-red-900/50 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition-all"
-                    />
-                </div>
-
-                <button 
-                    type="submit" 
-                    disabled={status === 'processing' || status === 'paying'}
-                    className="w-full bg-gradient-to-r from-red-600 to-red-800 hover:from-red-500 hover:to-red-700 text-white font-bold py-4 rounded-xl shadow-[0_10px_40px_-10px_rgba(220,38,38,0.5)] transform transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 group"
-                >
-                    {status === 'processing' ? (
-                        <>
-                            <Loader2 className="w-5 h-5 animate-spin" />
-                            Création de la mission...
-                        </>
-                    ) : status === 'paying' ? (
-                        <>
-                            <Lock className="w-4 h-4" />
-                            Sécurisation du paiement...
-                        </>
-                    ) : (
-                        <>
-                            <Send className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                            LANCER LA MISSION
-                        </>
-                    )}
-                </button>
-            </form>
-        </div>
-
-        <div className="mt-8 flex justify-center gap-6 opacity-40 grayscale hover:grayscale-0 transition-all duration-500">
-             <div className="flex items-center gap-1 text-xs text-red-200">
-                <ShieldCheck className="w-4 h-4" />
-                <span>Paiement Sécurisé</span>
-             </div>
-        </div>
+      <div className="fixed inset-0 pointer-events-none">
+        <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-ruby-DEFAULT/20 rounded-full blur-[120px] animate-pulse-slow"></div>
+        <div className="absolute bottom-[-10%] right-[-10%] w-[600px] h-[600px] bg-[#4a0a18]/40 rounded-full blur-[150px]"></div>
       </div>
+
+      <div className="fixed top-0 left-0 w-full bg-ruby-dark/95 border-b border-rose-gold/30 backdrop-blur-md z-50 py-2 px-4 flex justify-center items-center gap-3">
+        <Timer size={14} className="text-rose-gold animate-pulse" />
+        <p className="text-xs md:text-sm text-cream font-medium tracking-wide">
+          Faites votre demande avant le <span className="text-rose-gold font-bold">14 Février</span>.
+        </p>
+      </div>
+
+      <header className="text-center mb-10 relative z-10 max-w-2xl px-4">
+        <div className="inline-flex items-center justify-center p-3 mb-6 rounded-full bg-rose-gold/10 border border-rose-gold/20 shadow-lg shadow-ruby-DEFAULT/10">
+            <Sparkles className="text-rose-gold w-6 h-6 animate-spin-slow" />
+        </div>
+        <h1 className="text-7xl md:text-8xl font-script text-rose-pale mb-4 drop-shadow-lg">YesOrYes</h1>
+        
+        <p className="text-cream/90 text-sm md:text-base font-serif italic mb-6 leading-relaxed border-l-2 border-rose-gold/50 pl-4 py-2 bg-ruby-light/10 rounded-r-lg shadow-lg">
+          Envoyez le lien. Le bouton "NON" s'enfuira quand elle essaiera de cliquer. <br/>
+          <span className="text-rose-gold/70 text-xs uppercase tracking-widest not-italic font-bold">
+            (Regardez-la galérer...)
+          </span>
+        </p>
+      </header>
+
+      <main className="card-valentine w-full max-w-2xl p-8 md:p-12 z-10 relative mb-8">
+        <form onSubmit={handleSubmit} className="space-y-10">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="group relative">
+              <label className="block text-rose-gold text-xs uppercase tracking-widest mb-2 ml-1">De la part de</label>
+              <input 
+                required type="text" maxLength={20} disabled={status !== 'idle'}
+                className="w-full p-3 bg-transparent border-b border-rose-gold/30 text-cream text-xl focus:border-rose-gold outline-none transition-all font-serif italic"
+                placeholder="Votre Prénom"
+                value={formData.sender}
+                onFocus={preloadAssets}
+                onChange={(e) => setFormData({...formData, sender: e.target.value})}
+              />
+            </div>
+            <div className="group relative">
+               <label className="block text-rose-gold text-xs uppercase tracking-widest mb-2 ml-1">Pour</label>
+               <input 
+                required type="text" maxLength={20} disabled={status !== 'idle'}
+                className="w-full p-3 bg-transparent border-b border-rose-gold/30 text-cream text-xl focus:border-rose-gold outline-none transition-all font-serif italic"
+                placeholder="Son Prénom"
+                value={formData.valentine}
+                onFocus={preloadAssets}
+                onChange={(e) => setFormData({...formData, valentine: e.target.value})}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-6 pt-4">
+            <div className="flex items-center justify-center gap-4 mb-6">
+              <div className="h-px bg-rose-gold/30 flex-1"></div>
+              <span className="font-script text-2xl text-rose-pale">Votre Choix</span>
+              <div className="h-px bg-rose-gold/30 flex-1"></div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* PLAN BASIC */}
+              <div 
+                onClick={() => status === 'idle' && setFormData({...formData, plan: 'basic'})}
+                className={`cursor-pointer p-6 rounded-xl border transition-all duration-300 flex flex-col justify-between h-full ${formData.plan === 'basic' ? 'bg-ruby-light/10 border-rose-gold shadow-rosegold' : 'bg-transparent border-rose-gold/20 hover:border-rose-gold/50'} ${status !== 'idle' ? 'opacity-50' : ''}`}
+              >
+                <div>
+                  <div className="flex justify-between items-start mb-4">
+                    <span className="text-cream font-medium text-lg">L'Essentiel</span>
+                    <span className="text-rose-gold italic text-sm">1.50€</span>
+                  </div>
+                  <p className="text-sm text-cream/60 italic font-light">Expérience immersive classique. Simple et efficace.</p>
+                </div>
+              </div>
+
+              {/* PLAN SPY */}
+              <div 
+                onClick={() => status === 'idle' && setFormData({...formData, plan: 'spy'})}
+                className={`relative cursor-pointer rounded-xl border transition-all duration-300 overflow-hidden ${formData.plan === 'spy' ? 'bg-gradient-to-br from-ruby-DEFAULT/30 to-ruby-dark/30 border-rose-gold shadow-rosegold scale-105' : 'bg-transparent border-rose-gold/20 hover:border-rose-gold/50'} ${status !== 'idle' ? 'opacity-50' : ''}`}
+              >
+                <div className="absolute top-0 right-0 bg-rose-gold text-ruby-dark text-[10px] font-bold px-2 py-0.5 rounded-bl-lg">POPULAIRE</div>
+                <div className="p-6 relative z-10">
+                  <div className="flex justify-between items-start mb-2">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-rose-gold animate-pulse" />
+                      <span className="text-cream font-medium text-lg">L'Espion</span>
+                    </div>
+                    <span className="text-rose-gold font-bold text-lg">2.50€</span>
+                  </div>
+                  <p className="text-sm text-cream/90 mb-3 italic font-light">Inclut le <strong>Carnet Secret</strong> : suivez ses clics et refus en direct.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <button 
+            type="submit" 
+            disabled={status !== 'idle' && status !== 'verifying_long'}
+            className="w-full btn-ruby py-4 rounded-lg tracking-[0.2em] text-sm uppercase font-medium transition-all shadow-lg hover:shadow-rose-gold/20 relative overflow-hidden group"
+          >
+            {status === 'idle' && (
+                <span className="flex items-center justify-center gap-3 relative z-10">
+                    {formData.plan === 'spy' ? (
+                        <>Inviter + Activer le Mouchard <Shield size={16} fill="currentColor" /></>
+                    ) : (
+                        <>Sceller l'invitation <Heart size={16} fill="currentColor" /></>
+                    )}
+                </span>
+            )}
+            {/* Gestion des états de chargement */}
+            {status === 'processing' && <span className="flex items-center justify-center gap-3 animate-pulse">Création...</span>}
+            {status === 'paying' && <span className="flex items-center justify-center gap-3"><CreditCard size={16} className="animate-bounce" /> Redirection...</span>}
+            {status === 'verifying' && <span className="flex items-center justify-center gap-3"><Loader2 size={16} className="animate-spin" /> Validation Bancaire...</span>}
+            {status === 'verifying_long' && <span className="flex items-center justify-center gap-3"><RefreshCw size={16} /> C'est long... Vérifier manuellement</span>}
+            {status === 'error' && <span>Erreur - Réessayer</span>}
+          </button>
+        </form>
+      </main>
+
+      {/* FOOTER & NOTIFS */}
+      <footer className="mt-auto py-8 text-center relative z-10 w-full opacity-60 hover:opacity-100 transition-opacity">
+        <div className="flex flex-wrap justify-center gap-4 md:gap-8 text-[10px] uppercase tracking-widest text-rose-gold/50 font-serif">
+            <Link to="/legal/cgv" className="hover:text-rose-gold transition-colors">CGV</Link>
+            <Link to="/legal/confidentialite" className="hover:text-rose-gold transition-colors">Confidentialité</Link>
+            <Link to="/legal/mentions-legales" className="hover:text-rose-gold transition-colors">Mentions Légales</Link>
+            <a href="mailto:contact@yesoryes.com" className="hover:text-rose-gold transition-colors">Contact</a>
+        </div>
+        <p className="mt-4 text-[9px] text-ruby-light/30">YesOrYes © {new Date().getFullYear()} • Fait avec Amour</p>
+      </footer>
+
+      {activeNotif && (
+        <div className="fixed bottom-6 left-6 z-50 flex items-center gap-4 bg-ruby-dark/90 border border-rose-gold/30 backdrop-blur-md px-4 py-3 rounded-lg shadow-xl animate-slide-up max-w-[300px]">
+          <div className="bg-rose-gold/20 p-2 rounded-full"><TrendingUp size={16} className="text-rose-gold" /></div>
+          <div>
+            <p className="text-xs text-rose-pale font-bold">{activeNotif.name}</p>
+            <p className="text-[10px] text-cream/80">{activeNotif.action} <span className="opacity-50 mx-1">•</span> {activeNotif.time}</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

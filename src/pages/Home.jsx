@@ -322,7 +322,26 @@ const Home = () => {
       const returnUrl = encodeURIComponent(`${window.location.origin}?payment_id=${id}&success=true&state=${statePayload}`);
       const stripeUrl = (formData.plan === 'spy' || formData.plan === 'premium') ? STRIPE_LINKS.spy : STRIPE_LINKS.basic;
       
-      window.location.href = `${stripeUrl}?client_reference_id=${id}&redirect_url=${returnUrl}`;
+      // window.location.href = `${stripeUrl}?client_reference_id=${id}&redirect_url=${returnUrl}`;
+
+      // --- NOUVEAU CODE (MODE TEST BYPASS) ---
+      console.log("🚀 MODE TEST ACTIVÉ : Paiement ignoré");
+      
+      // On simule l'objet invité comme s'il revenait du serveur
+      const fakeInvite = {
+          id: id,
+          sender: formData.sender,
+          valentine: formData.valentine,
+          plan: formData.plan,
+          payment_status: 'paid' // On force le statut payé
+      };
+
+      // On force la sauvegarde locale et l'affichage du succès
+      // Note: Il faut appeler repairLocalMemory si elle est accessible, 
+      // sinon on simule juste l'affichage.
+      
+      // Ici on appelle directement la fonction d'affichage du succès
+      displaySuccess(fakeInvite, token);
 
     } catch (error) {
       console.error("Erreur handleSubmit:", error);

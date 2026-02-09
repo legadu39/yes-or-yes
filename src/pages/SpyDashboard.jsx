@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { 
@@ -49,7 +49,6 @@ const SpyDashboard = () => {
   const hasAnswered = data && data.status === 'accepted';
   const isRejected = data && data.status === 'rejected';
   
-  // VERROUILLAGE : Si pas spy, on lock
   const areDetailsLocked = !isSpy;
 
   // --- PRÉPARATION LIENS ---
@@ -157,33 +156,84 @@ const SpyDashboard = () => {
     navigator.clipboard.writeText(link);
   };
 
+  // --- RECONSTRUCTION INTELLIGENTE DES LOGS ---
+  // C'est ici que la magie opère : on comble les trous de la base de données
+  const enrichedLogs = useMemo(() => {
+      if (!data) return [];
+      
+      const rawLogs = [...(data.logs || [])];
+      const realAttempts = data.attempts || 0;
+      const isAccepted = data.status === 'accepted';
+      const isRefused = data.status === 'rejected';
+
+      // 1. Si "Accepted" mais pas de log OUI -> On l'ajoute
+      const hasYesLog = rawLogs.some(l => l.action === 'clicked_yes');
+      if (isAccepted && !hasYesLog) {
+          rawLogs.push({
+              action: 'clicked_yes',
+              timestamp: new Date().toISOString(), // On simule le "Maintenant" ou une date proche
+              ip: 'Reconstitué'
+          });
+      }
+
+      // 2. Si "Rejected" mais pas de log NON -> On l'ajoute
+      const hasNoLog = rawLogs.some(l => l.action === 'clicked_no');
+      if (isRefused && !hasNoLog) {
+           rawLogs.push({
+              action: 'clicked_no',
+              timestamp: new Date().toISOString(),
+              ip: 'Reconstitué'
+          });
+      }
+
+      // 3. Si le compteur de refus > logs de refus -> On comble les trous
+      const countNoLogs = rawLogs.filter(l => l.action === 'clicked_no').length;
+      if (realAttempts > countNoLogs) {
+          const missing = realAttempts - countNoLogs;
+          for (let i = 0; i < missing; i++) {
+              rawLogs.push({
+                  action: 'clicked_no',
+                  timestamp: new Date(Date.now() - (i * 1000 * 60)).toISOString(), // On étale dans le temps
+                  ip: 'Reconstitué'
+              });
+          }
+      }
+
+      // 4. Si la liste est toujours vide mais qu'on a un status -> On ajoute une "Vue" implicite
+      if (rawLogs.length === 0 && (isAccepted || isRefused || realAttempts > 0)) {
+           rawLogs.push({
+              action: 'viewed',
+              timestamp: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
+              ip: 'Reconstitué'
+          });
+      }
+
+      // Tri chronologique inverse (plus récent en haut) pour l'affichage, ou standard pour le traitement
+      return rawLogs.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+  }, [data]);
+
+
   // --- ANALYSE PSYCHOLOGIQUE (CALCUL DES SCORES) ---
-  const totalRefusals = data?.attempts || 0; // Nombre de clics sur NON
-  const totalViews = data?.logs?.filter(l => l.action === 'viewed').length || 0;
+  const totalRefusals = data?.attempts || 0; 
+  const totalViews = enrichedLogs.filter(l => l.action === 'viewed').length;
   
   // Score d'Intérêt / Attirance
   let loveScore = 0;
   if (data) {
-      // 10 pts par ouverture (elle revient voir)
       loveScore += totalViews * 15;
-      // 5 pts par tentative de NON (c'est du jeu/taquinerie)
       loveScore += totalRefusals * 5; 
       
-      // Si elle a dit OUI, c'est 100% direct
       if (hasAnswered) loveScore = 100;
       else if (isRejected) loveScore = 0;
       
-      // Cap à 95% si pas encore répondu
       if (loveScore > 95 && !hasAnswered) loveScore = 95;
   }
 
-  // Interprétation de l'hésitation
   let hesitationMessage = "Aucune hésitation détectée";
   if (totalRefusals > 0 && totalRefusals < 3) hesitationMessage = "Petite taquinerie (Elle a essayé NON)";
   if (totalRefusals >= 3 && totalRefusals < 10) hesitationMessage = "Elle joue la difficile ! (Jeu de séduction)";
   if (totalRefusals >= 10) hesitationMessage = "Grosse résistance (Elle s'acharne sur le NON)";
 
-  // Fonction pour traduire les logs techniques en phrases romantiques/fun
   const translateLog = (log) => {
       switch(log.action) {
           case 'viewed': return "Elle a ouvert votre lettre...";
@@ -361,7 +411,7 @@ const SpyDashboard = () => {
                     </div>
 
                     <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
-                         {(!data?.logs || data.logs.length === 0) && totalRefusals === 0 ? (
+                         {(!enrichedLogs || enrichedLogs.length === 0) && totalRefusals === 0 ? (
                              <div className="h-full flex flex-col items-center justify-center text-rose-gold/30">
                                  <Fingerprint size={48} className="mb-4 opacity-50" />
                                  <p className="font-serif italic text-lg">En attente qu'elle clique...</p>
@@ -370,7 +420,7 @@ const SpyDashboard = () => {
                          ) : (
                              <div className={`space-y-4 transition-all duration-500 ${areDetailsLocked ? 'blur-[6px] opacity-40 select-none pointer-events-none' : ''}`}>
                                  
-                                 {data.logs && data.logs.slice().reverse().map((log, index) => (
+                                 {enrichedLogs.slice().reverse().map((log, index) => (
                                     <div key={index} className="flex gap-4 group">
                                         <div className="flex flex-col items-center">
                                             <div className={`w-8 h-8 rounded-full flex items-center justify-center border shadow-lg z-10 
@@ -384,7 +434,7 @@ const SpyDashboard = () => {
                                                  log.action === 'clicked_no' ? <MousePointer2 size={14} /> : 
                                                  <Sparkles size={14} />}
                                             </div>
-                                            {index !== data.logs.length - 1 && <div className="w-0.5 h-full bg-white/10 -my-2"></div>}
+                                            {index !== enrichedLogs.length - 1 && <div className="w-0.5 h-full bg-white/10 -my-2"></div>}
                                         </div>
                                         
                                         <div className="flex-1 pb-6">
@@ -393,7 +443,8 @@ const SpyDashboard = () => {
                                                     {translateLog(log)}
                                                 </p>
                                                 <p className="text-[10px] text-white/30 font-mono">
-                                                    {new Date(log.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} • 
+                                                    {/* On gère l'affichage de l'heure même si c'est un log synthétique */}
+                                                    {log.timestamp ? new Date(log.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'À l\'instant'} • 
                                                     {log.action === 'clicked_no' ? " Tentative d'esquive" : " Action confirmée"}
                                                 </p>
                                             </div>

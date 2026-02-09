@@ -4,7 +4,7 @@ import { useApp } from '../context/AppContext';
 import { 
   Shield, Clock, MousePointer2, CheckCircle2, HeartHandshake, 
   LockKeyhole, Loader2, Ban, Eye, PartyPopper, Lock, Sparkles, 
-  RefreshCw, TrendingUp, Gem, Fingerprint, ChevronRight
+  RefreshCw, TrendingUp, Fingerprint, ChevronRight, Key
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -120,7 +120,7 @@ const SpyDashboard = () => {
 
   // --- RENDU UI ---
 
-  // Loader Style Home
+  // Loader
   if (loading && !data) {
     return (
       <div className="min-h-screen bg-ruby-dark flex flex-col items-center justify-center relative overflow-hidden">
@@ -136,16 +136,15 @@ const SpyDashboard = () => {
     );
   }
 
-  // Access Denied Style Home
+  // Access Denied
   if (accessDenied) {
     return (
       <div className="min-h-screen bg-ruby-dark flex items-center justify-center p-6 relative">
-         <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5"></div>
          <div className="max-w-lg w-full bg-black/40 border border-rose-gold/30 p-10 rounded-3xl backdrop-blur-xl text-center shadow-2xl relative z-10">
             <Ban className="mx-auto text-rose-gold/80 mb-6" size={64} />
             <h1 className="text-5xl font-script text-rose-pale mb-4">Accès Interdit</h1>
             <p className="text-cream/70 font-serif mb-8 text-lg leading-relaxed">
-                Ce dossier est classifié "Top Secret" ou le lien a expiré.
+                Ce dossier est classifié ou le lien a expiré.
             </p>
             <button onClick={() => navigate('/')} className="px-8 py-3 bg-rose-gold/10 hover:bg-rose-gold/20 text-rose-gold border border-rose-gold/50 rounded-full transition-all uppercase tracking-widest text-xs font-bold">
                 Retour à la base
@@ -158,7 +157,7 @@ const SpyDashboard = () => {
   return (
     <div className="min-h-screen bg-ruby-dark text-cream font-sans relative overflow-x-hidden selection:bg-rose-gold/30 selection:text-white">
       
-      {/* 1. FOND D'AMBIANCE (Le même que la Home pour la cohérence) */}
+      {/* 1. FOND D'AMBIANCE */}
       <div className="fixed inset-0 pointer-events-none">
         <div className="absolute top-[-20%] left-[-10%] w-[800px] h-[800px] bg-ruby-DEFAULT/15 rounded-full blur-[150px] animate-pulse-slow"></div>
         <div className="absolute bottom-[-10%] right-[-10%] w-[600px] h-[600px] bg-[#4a0a18]/60 rounded-full blur-[150px]"></div>
@@ -167,7 +166,7 @@ const SpyDashboard = () => {
 
       <div className="max-w-7xl mx-auto px-4 py-8 relative z-10">
         
-        {/* 2. HEADER: Typographie Script XXL mais bien dosée */}
+        {/* 2. HEADER */}
         <header className="mb-12 flex flex-col md:flex-row justify-between items-end gap-6 border-b border-rose-gold/10 pb-8">
             <div>
                 <div className="flex items-center gap-2 mb-3">
@@ -178,6 +177,7 @@ const SpyDashboard = () => {
                         Dossier Confidentiel
                     </span>
                 </div>
+                {/* Seul endroit où on garde la police Script pour l'impact */}
                 <h1 className="text-6xl md:text-7xl font-script text-transparent bg-clip-text bg-gradient-to-r from-rose-pale via-cream to-rose-gold drop-shadow-md">
                     Rapport Cupidon
                 </h1>
@@ -196,13 +196,13 @@ const SpyDashboard = () => {
             </div>
         </header>
 
-        {/* 3. GRID PRINCIPAL (Architecture Dashboard) */}
+        {/* 3. GRID PRINCIPAL */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
             
-            {/* A. COLONNE GAUCHE (Status & Analyse) - span 4 */}
+            {/* A. COLONNE GAUCHE (Status & Analyse) */}
             <div className="lg:col-span-4 space-y-6">
                 
-                {/* Carte STATUS (Le Coeur du Réacteur) */}
+                {/* Carte STATUS */}
                 <div className={`relative overflow-hidden rounded-3xl p-8 border backdrop-blur-xl transition-all duration-700 group
                     ${hasAnswered 
                         ? 'bg-gradient-to-br from-emerald-900/40 to-black border-emerald-500/30 shadow-[0_0_40px_rgba(16,185,129,0.15)]' 
@@ -218,6 +218,7 @@ const SpyDashboard = () => {
                         
                         <h2 className="text-xs font-serif text-rose-pale/50 uppercase tracking-[0.2em] mb-3">Statut de la Cible</h2>
                         
+                        {/* Titre Statut : Script utilisé ici car c'est un "Titre" émotionnel */}
                         <div className="text-4xl md:text-5xl font-script text-cream leading-tight mb-2">
                             {hasAnswered 
                                 ? <span className="text-emerald-300 drop-shadow-lg">Elle a dit Oui !</span>
@@ -227,7 +228,6 @@ const SpyDashboard = () => {
                             }
                         </div>
                         
-                        {/* Jauge d'intérêt */}
                         <div className="w-full mt-8">
                             <div className="flex justify-between text-[10px] uppercase tracking-widest text-rose-gold/60 mb-2">
                                 <span>Probabilité de Succès</span>
@@ -243,7 +243,7 @@ const SpyDashboard = () => {
                     </div>
                 </div>
 
-                {/* Carte LIEN (Compacte) */}
+                {/* Carte LIEN */}
                 <div className="bg-black/20 border border-rose-gold/10 rounded-2xl p-6 backdrop-blur-md">
                      <p className="text-[10px] text-rose-gold/60 uppercase tracking-widest mb-3 flex items-center gap-2">
                         <Sparkles size={12} /> Lien Unique
@@ -272,7 +272,7 @@ const SpyDashboard = () => {
 
             </div>
 
-            {/* B. COLONNE DROITE (Logs & Unlock) - span 8 */}
+            {/* B. COLONNE DROITE (Logs & Unlock) */}
             <div className="lg:col-span-8 relative">
                 
                 {/* Conteneur Principal des Logs */}
@@ -281,8 +281,9 @@ const SpyDashboard = () => {
                     {/* Header Logs */}
                     <div className="px-8 py-6 border-b border-rose-gold/10 flex justify-between items-center bg-black/20">
                         <div>
-                            <h3 className="text-2xl font-script text-rose-pale mb-1">Journal d'Espionnage</h3>
-                            <p className="text-xs text-rose-gold/50 font-serif uppercase tracking-widest">Activité en Temps Réel</p>
+                            {/* Titre simple et propre */}
+                            <h3 className="text-xl font-serif text-rose-pale mb-1 tracking-wide">Journal d'Activité</h3>
+                            <p className="text-[10px] text-rose-gold/50 font-mono uppercase tracking-widest">Surveillance Temps Réel</p>
                         </div>
                         <Shield className="text-rose-gold/30" size={24} />
                     </div>
@@ -296,8 +297,8 @@ const SpyDashboard = () => {
                                  <p className="text-xs uppercase tracking-widest mt-2 opacity-50">Le système est en écoute</p>
                              </div>
                          ) : (
-                             // Si locked, on floute légèrement la liste
-                             <div className={`space-y-3 transition-all duration-500 ${areDetailsLocked ? 'blur-[3px] opacity-40 select-none pointer-events-none' : ''}`}>
+                             // Si locked, on floute la liste
+                             <div className={`space-y-3 transition-all duration-500 ${areDetailsLocked ? 'blur-[4px] opacity-30 select-none pointer-events-none' : ''}`}>
                                  {data.logs.slice().reverse().map((log, index) => (
                                     <div key={index} className="group flex items-center gap-5 p-4 rounded-xl bg-white/5 border border-transparent hover:border-rose-gold/20 hover:bg-white/10 transition-all">
                                         <div className="shrink-0 p-2 rounded-full bg-black/30 border border-white/5 text-rose-gold">
@@ -325,36 +326,32 @@ const SpyDashboard = () => {
                          )}
                     </div>
 
-                    {/* 4. LE LOCK SCREEN (REVISITÉ) - PREMIUM */}
+                    {/* 4. LE LOCK SCREEN (REVISITÉ - STYLE HOME) */}
                     {areDetailsLocked && (
-                        <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/60 backdrop-blur-[6px]">
+                        <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/70 backdrop-blur-[6px]">
                             
-                            {/* La Carte VIP */}
-                            <div className="w-full max-w-sm mx-4 bg-[#1a0b12] border border-purple-500/30 p-1 rounded-2xl shadow-[0_0_50px_rgba(100,20,100,0.3)] relative group overflow-hidden">
+                            {/* La Carte Lock : Style sobre et sombre */}
+                            <div className="w-full max-w-sm mx-4 bg-[#1a0b12]/90 border border-rose-gold/30 p-8 rounded-2xl shadow-2xl relative">
                                 
-                                {/* Effet de brillance qui traverse */}
-                                <div className="absolute top-0 -left-[100%] w-[50%] h-full bg-gradient-to-r from-transparent via-white/10 to-transparent transform -skew-x-25 group-hover:left-[200%] transition-all duration-1000 ease-in-out"></div>
-
-                                <div className="bg-[#12050a] rounded-xl p-8 text-center relative z-10 h-full flex flex-col items-center">
-                                    <div className="bg-gradient-to-br from-purple-900/50 to-pink-900/50 p-4 rounded-full mb-5 border border-purple-400/20 shadow-lg shadow-purple-900/20">
-                                        <LockKeyhole size={28} className="text-purple-200" />
+                                <div className="flex flex-col items-center text-center">
+                                    <div className="bg-rose-gold/10 p-4 rounded-full mb-4 border border-rose-gold/20">
+                                        <LockKeyhole size={24} className="text-rose-gold" />
                                     </div>
                                     
-                                    <h3 className="text-2xl font-script text-transparent bg-clip-text bg-gradient-to-r from-purple-200 to-pink-200 mb-2">
-                                        Accès Restreint
+                                    {/* Pas de police Script ici, mais du Serif Élégant */}
+                                    <h3 className="text-xl font-serif text-cream mb-3">
+                                        Données Verrouillées
                                     </h3>
                                     
-                                    <p className="text-xs text-rose-pale/60 font-serif mb-8 leading-relaxed px-2">
-                                        Les détails sensibles (IP, heure exacte, hésitations) sont verrouillés. <br/>
-                                        Débloquez le <strong>Rapport Complet</strong> maintenant.
+                                    <p className="text-xs text-rose-pale/70 font-sans mb-8 leading-relaxed px-4">
+                                        L'accès aux adresses IP, heures exactes et détails des interactions est réservé au Rapport Complet.
                                     </p>
 
-                                    {/* LE BOUTON "BIJOU" */}
-                                    <a href="https://buy.stripe.com/8x28wOcc6gFRfpAdk76Vq02" target="_blank" rel="noreferrer" 
-                                       className="w-full py-4 rounded-lg bg-gradient-to-r from-purple-700 via-pink-600 to-rose-500 text-white text-xs font-bold uppercase tracking-[0.2em] shadow-lg shadow-purple-900/50 hover:shadow-pink-500/40 hover:scale-[1.02] transition-all flex items-center justify-center gap-2 border border-white/10">
-                                        <Gem size={14} className="text-purple-100" />
-                                        Débloquer (1€)
-                                        <ChevronRight size={14} className="opacity-70" />
+                                    {/* LE BOUTON : Style Home (Gold/Bordeaux) */}
+                                    <a href="https://buy.stripe.com/9B614ma3YexJ7X82Ft6Vq03" target="_blank" rel="noreferrer" 
+                                       className="group w-full py-4 rounded-lg bg-rose-gold hover:bg-white text-ruby-dark text-xs font-bold uppercase tracking-[0.2em] shadow-lg transition-all flex items-center justify-center gap-3">
+                                        <span>Débloquer (1€)</span>
+                                        <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform" />
                                     </a>
                                 </div>
                             </div>

@@ -3,7 +3,8 @@ import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { 
   Eye, Sparkles, Copy, Heart, TrendingUp, CreditCard, 
-  Timer, Loader2, Check, Shield, RefreshCw, PartyPopper, Lock, Crown, Play, X, MousePointer2
+  Timer, Loader2, Check, Shield, RefreshCw, PartyPopper, Lock, Crown, 
+  Play, X, MousePointer2, Music, VolumeX, MailOpen
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -21,98 +22,186 @@ const STRIPE_LINKS = {
   spy: "https://buy.stripe.com/8x28wOcc6gFRfpAdk76Vq02"
 };
 
-// --- COMPOSANT DÉMO INTERNE (LA VRAIE LOGIQUE) ---
-const ValentineDemo = ({ onClose }) => {
-    const [noBtnPos, setNoBtnPos] = useState({ x: 0, y: 0 });
-    const [accepted, setAccepted] = useState(false);
+// --- UTILITAIRE MAJUSCULE ---
+const capitalize = (str) => {
+    if (!str) return '';
+    return str.charAt(0).toUpperCase() + str.slice(1);
+};
 
-    const moveButton = () => {
-        const x = (Math.random() - 0.5) * 250;
-        const y = (Math.random() - 0.5) * 250;
-        setNoBtnPos({ x, y });
+// --- LE CŒUR DU PIÈGE (PORTAGE DE VALENTINEPAGE POUR LA DÉMO) ---
+const ValentineDemo = ({ onClose }) => {
+    // États du jeu
+    const [step, setStep] = useState('envelope'); // envelope | game | success
+    const [noBtnStyle, setNoBtnStyle] = useState({});
+    const [isPlaying, setIsPlaying] = useState(false);
+    const [yesScale, setYesScale] = useState(1);
+    
+    // Moteur Physique (Le Vrai)
+    const [escapeCount, setEscapeCount] = useState(0);
+    const [fatigueLevel, setFatigueLevel] = useState(0);
+    
+    const audioRef = useRef(null);
+    const btnRef = useRef(null);
+    const containerRef = useRef(null); // Pour confiner le bouton dans la démo
+
+    // Init Audio
+    useEffect(() => {
+        audioRef.current = new Audio('/assets/music.ogg');
+        audioRef.current.loop = true;
+        audioRef.current.volume = 0.4;
+        return () => { if (audioRef.current) audioRef.current.pause(); };
+    }, []);
+
+    const handleStart = (e) => {
+        e.stopPropagation();
+        if (audioRef.current) {
+            audioRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
+        }
+        setStep('game');
+    };
+
+    const toggleMusic = (e) => {
+        e.stopPropagation();
+        if (isPlaying) { audioRef.current.pause(); setIsPlaying(false); }
+        else { audioRef.current.play(); setIsPlaying(true); }
+    };
+
+    // --- MOTEUR PHYSIQUE ADAPTÉ (COORDONNÉES RELATIVES) ---
+    const moveButton = (e) => {
+        if (step !== 'game' || !containerRef.current) return;
+
+        const containerRect = containerRef.current.getBoundingClientRect();
+        
+        // Calcul position souris relative au conteneur
+        let clientX = (e.touches ? e.touches[0].clientX : e.clientX) - containerRect.left;
+        let clientY = (e.touches ? e.touches[0].clientY : e.clientY) - containerRect.top;
+
+        // Fatigue
+        const fatigueIncrement = e.type.includes('touch') ? 10 : 4;
+        const newFatigue = Math.min(fatigueLevel + fatigueIncrement, 100);
+        setFatigueLevel(newFatigue);
+        setEscapeCount(prev => prev + 1);
+        setYesScale(prev => Math.min(prev + 0.05, 1.5)); // Scale un peu moins violent pour la démo
+
+        // Physique
+        const vivacity = Math.max(0.1, 1 - (newFatigue / 80));
+        const baseJump = 80; // Réduit pour la petite fenêtre
+        const jumpDistance = baseJump * vivacity;
+        const transitionTime = Math.max(0.2, 0.8 - (vivacity * 0.6));
+
+        // Calcul Vecteur
+        const btnRect = btnRef.current ? btnRef.current.getBoundingClientRect() : { width: 80, height: 40, left: 0, top: 0 };
+        // On convertit btnRect en relatif aussi pour le centre
+        const btnCenterX = (btnRect.left - containerRect.left) + btnRect.width / 2;
+        const btnCenterY = (btnRect.top - containerRect.top) + btnRect.height / 2;
+
+        let dirX = btnCenterX - clientX;
+        let dirY = btnCenterY - clientY;
+        const length = Math.sqrt(dirX * dirX + dirY * dirY) || 1;
+        dirX /= length; dirY /= length;
+
+        const angleJitter = (Math.random() - 0.5) * 2.0;
+        const finalDirX = dirX * Math.cos(angleJitter) - dirY * Math.sin(angleJitter);
+        const finalDirY = dirX * Math.sin(angleJitter) + dirY * Math.cos(angleJitter);
+
+        let nextX = (btnRect.left - containerRect.left) + (finalDirX * jumpDistance);
+        let nextY = (btnRect.top - containerRect.top) + (finalDirY * jumpDistance);
+
+        // Garde-fous (Rester dans le conteneur)
+        const padding = 10;
+        const maxX = containerRect.width - btnRect.width - padding;
+        const maxY = containerRect.height - btnRect.height - padding;
+
+        nextX = Math.max(padding, Math.min(nextX, maxX));
+        nextY = Math.max(padding, Math.min(nextY, maxY));
+
+        setNoBtnStyle({
+            position: 'absolute', // Important pour la démo
+            left: `${nextX}px`,
+            top: `${nextY}px`,
+            transition: `all ${transitionTime}s cubic-bezier(0.25, 0.46, 0.45, 0.94)`,
+            zIndex: 50
+        });
     };
 
     const handleYes = () => {
-        setAccepted(true);
-        const end = Date.now() + 1000;
-        const colors = ['#e11d48', '#fb7185', '#fff1f2'];
-        (function frame() {
-            confetti({ particleCount: 5, angle: 60, spread: 55, origin: { x: 0, y: 0.6 }, colors });
-            confetti({ particleCount: 5, angle: 120, spread: 55, origin: { x: 1, y: 0.6 }, colors });
-            if (Date.now() < end) requestAnimationFrame(frame);
-        }());
+        setStep('success');
+        confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 }, colors: ['#D24D57', '#FFFDD0'] });
     };
 
     return (
-        <div className="flex-1 bg-ruby-dark relative overflow-hidden flex flex-col items-center justify-center p-6 w-full h-full">
+        <div ref={containerRef} className="flex-1 bg-ruby-dark relative overflow-hidden flex flex-col items-center justify-center w-full h-full rounded-[2rem]">
             <div className="absolute inset-0 pointer-events-none opacity-30 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]"></div>
             
-            {/* CLOSE BTN */}
-            <button 
-                onClick={onClose}
-                className="absolute top-4 right-4 z-30 p-2 bg-black/50 rounded-full text-white/50 hover:text-white hover:bg-white/20 transition-all"
-            >
-                <X size={20} />
-            </button>
+            {/* CLOSE */}
+            <button onClick={onClose} className="absolute top-4 right-4 z-50 p-2 bg-black/50 rounded-full text-white/50 hover:text-white transition-all"><X size={16} /></button>
 
-            {accepted ? (
-                <div className="text-center animate-fade-in z-10">
-                    <div className="mb-6 inline-flex p-6 rounded-full bg-rose-gold/10 border border-rose-gold/30 text-rose-gold shadow-[0_0_30px_rgba(225,29,72,0.4)] animate-bounce-slow">
-                        <HeartHandshake size={48} />
-                    </div>
-                    <h2 className="text-4xl font-script text-cream mb-2">Elle a dit OUI !</h2>
-                    <p className="text-rose-pale/70 font-serif italic text-sm">
-                        (C'est ce que vous verrez quand elle cliquera)
-                    </p>
-                    <button onClick={onClose} className="mt-8 text-xs uppercase tracking-widest text-rose-gold border-b border-rose-gold/30 pb-1">
-                        Fermer la démo
-                    </button>
+            {/* MUSIQUE TOGGLE */}
+            {step !== 'envelope' && (
+                <button onClick={toggleMusic} className="absolute top-4 left-4 z-50 p-2 rounded-full bg-ruby-dark/50 border border-rose-gold/30 text-rose-pale">
+                    {isPlaying ? <Music size={14} className="animate-pulse" /> : <VolumeX size={14} />}
+                </button>
+            )}
+
+            {/* ÉTAPE 1 : ENVELOPPE */}
+            {step === 'envelope' && (
+                <div onClick={handleStart} className="relative cursor-pointer p-8 text-center animate-fade-in z-10 w-full h-full flex flex-col items-center justify-center hover:scale-105 transition-transform">
+                    <MailOpen className="w-20 h-20 text-rose-gold animate-bounce mb-4 mx-auto" />
+                    <h2 className="text-2xl font-script text-rose-pale mb-2">Pour Léa</h2>
+                    <p className="text-cream/60 text-[10px] uppercase tracking-widest animate-pulse">Toucher pour ouvrir</p>
+                    <p className="mt-8 text-rose-gold/30 font-serif italic text-xs">De la part d'Arthur</p>
                 </div>
-            ) : (
-                <div className="text-center z-10 space-y-8 w-full max-w-xs">
-                    <div className="space-y-2">
-                        <p className="text-rose-gold/80 font-serif italic text-sm animate-pulse">Arthur vous pose une question...</p>
-                        <h2 className="text-4xl font-script text-cream leading-tight drop-shadow-lg">
-                            Léa,<br/>Veux-tu être ma Valentine ?
-                        </h2>
-                    </div>
+            )}
 
-                    <div className="flex flex-col gap-4 w-full relative h-[150px] justify-center">
-                        {/* BOUTON OUI */}
+            {/* ÉTAPE 2 : LE JEU */}
+            {step === 'game' && (
+                <div className="w-full px-4 text-center z-20 h-full flex flex-col items-center justify-center">
+                    <p className="text-rose-pale/80 font-serif italic text-sm mb-6">Une question importante...</p>
+                    <h1 className="text-4xl font-script text-rose-pale mb-10 leading-tight">
+                        Veux-tu être ma <br/>
+                        <span className="text-ruby-light">Valentine ?</span>
+                    </h1>
+
+                    <div className="w-full relative h-[120px] flex flex-col items-center justify-center gap-4">
                         <button 
                             onClick={handleYes}
-                            className="w-full py-4 bg-gradient-to-r from-rose-gold to-[#e8b594] text-ruby-dark font-bold uppercase tracking-[0.2em] rounded-xl shadow-lg hover:scale-105 transition-transform z-20"
+                            style={{ transform: `scale(${yesScale})` }}
+                            className="w-full max-w-[200px] py-3 bg-gradient-to-r from-rose-gold to-[#e8b594] text-ruby-dark font-bold uppercase tracking-widest rounded-full shadow-lg z-20 transition-transform duration-300"
                         >
                             OUI !
                         </button>
-                        
-                        {/* BOUTON NON (FUYARD) */}
-                        <div className="absolute w-full flex justify-center pointer-events-none" style={{ top: '80px' }}>
-                            <button
-                                onMouseEnter={moveButton}
-                                onClick={moveButton} // Support tactile
-                                style={{
-                                    transform: `translate(${noBtnPos.x}px, ${noBtnPos.y}px)`,
-                                    transition: 'all 0.15s ease-out'
-                                }}
-                                className="pointer-events-auto px-8 py-3 border border-rose-gold/30 text-rose-gold/50 font-bold uppercase tracking-widest rounded-full text-xs flex items-center gap-2 hover:bg-rose-gold/5"
-                            >
-                                NON <MousePointer2 size={12} />
-                            </button>
-                        </div>
+
+                        <button
+                            ref={btnRef}
+                            style={noBtnStyle}
+                            onMouseEnter={moveButton}
+                            onTouchStart={moveButton}
+                            className="px-6 py-2 border border-rose-gold/30 text-rose-gold/50 font-bold uppercase tracking-widest rounded-full text-[10px] absolute"
+                        >
+                            {escapeCount === 0 ? "Non" : fatigueLevel > 80 ? "Pff..." : "Jamais"}
+                        </button>
                     </div>
-                    
-                    <p className="text-[10px] text-white/20 mt-8">Essayez de cliquer sur NON...</p>
+                </div>
+            )}
+
+            {/* ÉTAPE 3 : SUCCÈS */}
+            {step === 'success' && (
+                <div className="text-center animate-fade-in z-10 p-6">
+                    <div className="mb-4 inline-flex p-4 rounded-full bg-rose-gold/10 border border-rose-gold/30 text-rose-gold animate-bounce">
+                        <Heart size={40} fill="currentColor" />
+                    </div>
+                    <h2 className="text-3xl font-script text-cream mb-2">Elle a dit OUI !</h2>
+                    <p className="text-rose-pale/60 font-serif italic text-xs mb-6">
+                        (C'est ce que vous verrez quand elle craquera)
+                    </p>
+                    <button onClick={onClose} className="text-xs uppercase tracking-widest text-rose-gold border-b border-rose-gold/30 pb-1">
+                        Fermer la démo
+                    </button>
                 </div>
             )}
         </div>
     );
 };
-
-// --- ICONE MANQUANTE ---
-const HeartHandshake = ({ size, className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/><path d="M12 5 9.04 7.96a2.17 2.17 0 0 0 0 3.08v0c.82.82 2.13.85 3 .07l2.07-1.9a2.82 2.82 0 0 1 3.18 0l2.94 2.69c.78.72.78 1.94 0 2.66"/><path d="M5.4 13.23a2.43 2.43 0 0 0 2.65 0l1.09-.99a2.43 2.43 0 0 1 3.26 0l3.77 3.49a2.43 2.43 0 0 1 0 3.49v0a2.43 2.43 0 0 1-3.49 0l-.8-.73a2.43 2.43 0 0 0-3.26 0l-4.7 4.3"/></svg>
-);
 
 
 const Home = () => {
@@ -127,7 +216,6 @@ const Home = () => {
     recoverDraft
   } = useApp();
 
-  // --- ÉTATS GLOBAUX ---
   const [formData, setFormData] = useState({ sender: '', valentine: '', plan: 'spy' });
   const [generatedLinks, setGeneratedLinks] = useState(null);
   const [status, setStatus] = useState('idle'); 
@@ -138,14 +226,13 @@ const Home = () => {
   // --- ÉTAT DÉMO ---
   const [showDemo, setShowDemo] = useState(false);
 
-  // --- ÉTATS INTELLIGENCE ---
+  // --- INTELLIGENCE ---
   const [answerReceived, setAnswerReceived] = useState(null); 
   const pollingIntervalRef = useRef(null); 
   const [monitoringToken, setMonitoringToken] = useState(null); 
 
   useEffect(() => setMounted(true), []);
 
-  // 1. PERSISTANCE BROUILLON
   useEffect(() => {
     if (status === 'idle') {
         const draft = recoverDraft();
@@ -157,13 +244,7 @@ const Home = () => {
     if (status === 'idle') saveDraft(formData);
   }, [formData, status, saveDraft]);
 
-  // --- UTILITAIRE MAJUSCULE ---
-  const capitalize = (str) => {
-      if (!str) return '';
-      return str.charAt(0).toUpperCase() + str.slice(1);
-  };
-
-  // 2. GESTION RETOUR PAIEMENT
+  // --- LOGIQUE RETOUR PAIEMENT ---
   useEffect(() => {
     const clientRef = searchParams.get('client_reference_id');
     const urlIdParam = searchParams.get('id');
@@ -174,7 +255,6 @@ const Home = () => {
     const isReturningFromStripe = fromStripe || (paymentId && paymentId.startsWith('cs_'));
     const pendingUpsell = sessionStorage.getItem('pending_upsell_context');
     
-    // Stratégie Fil d'Ariane
     if (isReturningFromStripe && pendingUpsell) {
         try {
             const context = JSON.parse(pendingUpsell);
@@ -186,7 +266,7 @@ const Home = () => {
                 }, 100);
                 return;
             }
-        } catch (e) { console.error(e); }
+        } catch (e) { }
     }
 
     let urlId = null;
@@ -219,7 +299,6 @@ const Home = () => {
     }
   }, [searchParams]);
 
-  // 3. SURVEILLANCE RÉPONSE
   useEffect(() => {
     if (status !== 'success' || !generatedLinks || answerReceived) return;
     const currentId = generatedLinks.valentine.split('/').pop();
@@ -248,9 +327,6 @@ const Home = () => {
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => { if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current); document.removeEventListener('visibilitychange', handleVisibilityChange); };
   }, [status, generatedLinks, answerReceived]);
-
-
-  // --- LOGIQUE MÉTIER ---
 
   const preloadAssets = () => {
     if (window.hasPreloaded) return;
@@ -386,11 +462,7 @@ const Home = () => {
 
   const displaySuccess = (invite, token) => {
     if (!invite) return;
-    setFormData({ 
-        sender: invite.sender || "Vous", 
-        valentine: invite.valentine || "...", 
-        plan: invite.plan || 'spy' 
-    });
+    setFormData({ sender: invite.sender || "Vous", valentine: invite.valentine || "...", plan: invite.plan || 'spy' });
     setMonitoringToken(token);
     const safeId = invite.id.startsWith('cs_') ? (token ? 'ERREUR_ID' : invite.id) : invite.id;
     setGeneratedLinks({ valentine: `${window.location.origin}/v/${safeId}`, spy: showSpyLink ? `${window.location.origin}/spy/${safeId}?token=${token}` : null });
@@ -441,8 +513,7 @@ const Home = () => {
     return () => { clearTimeout(t1); clearInterval(t2); };
   }, []);
 
-  // --- RENDU ---
-
+  // --- RENDER FORMULAIRE ---
   if (status === 'success' && generatedLinks) {
     const currentId = generatedLinks.valentine.split('/').pop();
     const upsellRefId = monitoringToken ? `${currentId}___${monitoringToken}` : currentId;
@@ -562,7 +633,6 @@ const Home = () => {
     );
   }
 
-  // --- RENDU FORMULAIRE ---
   return (
     <div className={`min-h-screen bg-ruby-dark p-4 flex flex-col items-center justify-center relative overflow-x-hidden pt-16 ${mounted ? 'opacity-100' : 'opacity-0'} transition-opacity duration-1000`}>
       
@@ -594,7 +664,7 @@ const Home = () => {
         {/* --- BOUTON DÉMO --- */}
         <button 
             onClick={() => setShowDemo(true)}
-            className="flex items-center gap-2 mx-auto px-4 py-2 bg-rose-gold/10 hover:bg-rose-gold/20 text-rose-gold rounded-full text-xs uppercase tracking-widest border border-rose-gold/30 transition-all hover:scale-105"
+            className="flex items-center gap-2 mx-auto px-6 py-3 bg-rose-gold/10 hover:bg-rose-gold/20 text-rose-gold rounded-full text-xs uppercase tracking-widest border border-rose-gold/30 transition-all hover:scale-105 shadow-[0_0_15px_rgba(225,29,72,0.2)]"
         >
             <Play size={12} fill="currentColor" /> Voir un exemple du piège
         </button>
@@ -710,17 +780,16 @@ const Home = () => {
         </div>
       )}
 
-      {/* --- MODALE DÉMO SIMULATION --- */}
+      {/* --- MODALE DÉMO AVEC LE VRAI MOTEUR PHYSIQUE --- */}
       {showDemo && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in">
-              <div className="w-full max-w-sm h-[600px] bg-black border border-rose-gold/30 rounded-[2rem] shadow-2xl overflow-hidden relative flex flex-col">
-                  {/* Phone Notch Mockup */}
-                  <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-6 bg-black rounded-b-xl border-b border-x border-white/10 z-20"></div>
+              <div className="w-full max-w-sm h-[650px] bg-black border border-rose-gold/30 rounded-[2rem] shadow-2xl overflow-hidden relative flex flex-col">
+                  <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-6 bg-black rounded-b-xl border-b border-x border-white/10 z-50"></div>
                   
                   {/* COMPOSANT DEMO INTERNE */}
                   <ValentineDemo onClose={() => setShowDemo(false)} />
 
-                  <div className="bg-black py-3 text-center border-t border-white/10">
+                  <div className="bg-black py-3 text-center border-t border-white/10 z-50">
                       <p className="text-[10px] text-white/30 uppercase tracking-widest">Simulateur - Vue de Léa</p>
                   </div>
               </div>

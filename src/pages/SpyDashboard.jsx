@@ -23,9 +23,6 @@ const SpyDashboard = () => {
   const [connectionStatus, setConnectionStatus] = useState('connecting'); 
   const [lastRefreshed, setLastRefreshed] = useState(new Date());
   
-  // NOUVEAU : État pour le "Mode Radar" (Polling agressif après clic sur débloquer)
-  const [isUpgrading, setIsUpgrading] = useState(false);
-  
   const consecutiveErrors = useRef(0);
   const prevDataRef = useRef(null);
   const pollingIntervalRef = useRef(null);
@@ -55,18 +52,14 @@ const SpyDashboard = () => {
       } else {
         consecutiveErrors.current = 0;
         
-        // DÉTECTION INTELLIGENTE DES CHANGEMENTS
-        if (prevDataRef.current) {
-            // 1. Victoire : Passage de Pending à Accepted
-            if (prevDataRef.current.status === 'pending' && result.status === 'accepted') {
-                triggerVictory();
-            }
-            // 2. Upgrade : Passage de Basic à Spy (Auto-Unlock)
-            if (prevDataRef.current.plan === 'basic' && result.plan === 'spy') {
-                console.log("🔓 UPGRADE DÉTECTÉ ! Déverrouillage immédiat.");
-                setIsUpgrading(false); // On arrête le mode radar
-                triggerVictory(); // Petit confetti de célébration
-            }
+        // Détection Victoire (Pending -> Accepted)
+        if (prevDataRef.current && prevDataRef.current.status === 'pending' && result.status === 'accepted') {
+            triggerVictory();
+        }
+
+        // Si on revient d'un paiement et qu'on est passé Spy
+        if (prevDataRef.current && prevDataRef.current.plan === 'basic' && result.plan === 'spy') {
+             triggerVictory(); 
         }
 
         setData(result);
@@ -86,28 +79,21 @@ const SpyDashboard = () => {
     fetchData();
     const handleVisibilityChange = () => {
       pageVisibleRef.current = !document.hidden;
-      // Si l'utilisateur revient sur l'onglet, on rafraîchit immédiatement
       if (!document.hidden) fetchData(true);
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    // INTELLIGENCE POLLING :
-    // Si isUpgrading (l'utilisateur vient de cliquer sur payer) -> Check toutes les 2s
-    // Sinon Si jeu en cours -> Check toutes les 5s
-    // Sinon (Jeu fini) -> Check toutes les 60s
-    let intervalDuration = 60000;
-    if (isUpgrading) intervalDuration = 2000;
-    else if (data && data.status === 'pending') intervalDuration = 5000;
-
+    
+    // Polling standard (toutes les minutes, ou 5s si jeu en cours)
+    const intervalDuration = (data && data.status === 'pending') ? 5000 : 60000;
     pollingIntervalRef.current = setInterval(() => {
-      if (pageVisibleRef.current || isUpgrading) fetchData(true);
+      if (pageVisibleRef.current) fetchData(true);
     }, intervalDuration);
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
     };
-  }, [fetchData, data?.status, isUpgrading]); // Ajout de isUpgrading aux dépendances
+  }, [fetchData, data?.status]);
 
   const triggerVictory = () => {
     const duration = 3000;
@@ -140,7 +126,6 @@ const SpyDashboard = () => {
 
   // --- RENDU UI ---
 
-  // Loader
   if (loading && !data) {
     return (
       <div className="min-h-screen bg-ruby-dark flex flex-col items-center justify-center relative overflow-hidden">
@@ -156,7 +141,6 @@ const SpyDashboard = () => {
     );
   }
 
-  // Access Denied
   if (accessDenied) {
     return (
       <div className="min-h-screen bg-ruby-dark flex items-center justify-center p-6 relative">
@@ -363,7 +347,7 @@ const SpyDashboard = () => {
                          )}
                     </div>
 
-                    {/* 4. LE LOCK SCREEN (AVEC MODE RADAR ACTIVÉ) */}
+                    {/* 4. LE LOCK SCREEN (RETOUR AU MODE CLASSIQUE - MÊME PAGE) */}
                     {areDetailsLocked && (
                         <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/70 backdrop-blur-[6px]">
                             <div className="w-full max-w-sm mx-4 bg-[#1a0b12]/90 border border-rose-gold/30 p-8 rounded-2xl shadow-2xl relative">
@@ -378,25 +362,13 @@ const SpyDashboard = () => {
                                         L'accès aux adresses IP, heures exactes et détails des interactions est réservé au Rapport Complet.
                                     </p>
 
-                                    {/* BOUTON DÉBLOQUER AVEC DÉCLENCHEUR RADAR */}
+                                    {/* LIEN SIMPLE SANS TARGET BLANK NI POLLING */}
                                     <a 
                                        href={`${STRIPE_UPSELL_LINK}?client_reference_id=${id}`} 
-                                       target="_blank" 
-                                       rel="noreferrer" 
-                                       onClick={() => setIsUpgrading(true)} // <-- C'EST ICI QUE LA MAGIE OPÈRE
                                        className="group w-full py-4 rounded-lg bg-rose-gold hover:bg-white text-ruby-dark text-xs font-bold uppercase tracking-[0.2em] shadow-lg transition-all flex items-center justify-center gap-3 cursor-pointer"
                                     >
-                                        {isUpgrading ? (
-                                            <>
-                                                <Loader2 size={14} className="animate-spin" />
-                                                <span>Vérification...</span>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <span>Débloquer (1€)</span>
-                                                <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform" />
-                                            </>
-                                        )}
+                                        <span>Débloquer (1€)</span>
+                                        <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform" />
                                     </a>
                                 </div>
                             </div>

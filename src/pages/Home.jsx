@@ -209,21 +209,31 @@ const Home = () => {
 
             repairLocalMemory(finalInvite.id, foundToken, finalInvite);
 
-            // INTELLIGENCE DE REDIRECTION (UPSell Fix) :
-            if (!stateParam && foundToken && finalInvite.plan === 'spy') {
-                 console.log("🔄 Retour Upsell détecté -> Redirection Dashboard");
-                 navigate(`/spy/${finalInvite.id}?token=${foundToken}`);
-                 return;
-            }
+            // TENTATIVE REDIRECTION UPSELL IMMÉDIATE
+            if (tryUpsellRedirect(stateParam, foundToken, finalInvite)) return;
 
             displaySuccess(finalInvite, foundToken);
         } else {
             // Paiement pas encore propagé -> Polling
-            waitForServerValidation(paymentId, { ...recoveredData, id: paymentId });
+            // On passe stateParam pour pouvoir retenter le redirect plus tard
+            waitForServerValidation(paymentId, { ...recoveredData, id: paymentId }, stateParam);
         }
     } catch (e) {
-        waitForServerValidation(paymentId, recoveredData); // Fallback total
+        waitForServerValidation(paymentId, recoveredData, stateParam); // Fallback total
     }
+  };
+
+  // NOUVEAU : Fonction helper pour vérifier la redirection Upsell
+  const tryUpsellRedirect = (stateParam, token, invite) => {
+    // Si pas de paramètre 'state' (donc pas le flux de création initial via formulaire)
+    // ET qu'on a le token (le user est propriétaire)
+    // ET que c'est le plan Spy (donc potentiellement un upsell réussi)
+    if (!stateParam && token && invite.plan === 'spy') {
+         console.log("🔄 Retour Upsell détecté -> Redirection Dashboard");
+         navigate(`/spy/${invite.id}?token=${token}`);
+         return true;
+    }
+    return false;
   };
 
   const repairLocalMemory = (id, token, data) => {
@@ -235,7 +245,7 @@ const Home = () => {
   };
 
   // Polling adaptatif (Backoff) pour attendre la validation Stripe
-  const waitForServerValidation = async (paymentId, contextData) => {
+  const waitForServerValidation = async (paymentId, contextData, stateParam = null) => {
     setStatus('verifying');
     let attempt = 0;
     const maxAttempts = 25;
@@ -258,6 +268,10 @@ const Home = () => {
 
         const finalData = { ...contextData, id: serverData.id, plan: serverData.plan };
         if (finalToken) repairLocalMemory(serverData.id, finalToken, finalData);
+
+        // --- CORRECTION CRITIQUE ---
+        // On retente la redirection ici aussi (si le webhook était lent)
+        if (tryUpsellRedirect(stateParam, finalToken, finalData)) return;
 
         displaySuccess(finalData, finalToken);
 

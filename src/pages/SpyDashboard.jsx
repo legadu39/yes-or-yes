@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
-// LIEN STRIPE UPSELL (1€) - CORRECT
+// LIEN STRIPE UPSELL (1€)
 const STRIPE_UPSELL_LINK = "https://buy.stripe.com/9B614ma3YexJ7X82Ft6Vq03";
 
 const SpyDashboard = () => {
@@ -22,6 +22,9 @@ const SpyDashboard = () => {
   const [accessDenied, setAccessDenied] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState('connecting'); 
   const [lastRefreshed, setLastRefreshed] = useState(new Date());
+  
+  // NOUVEAU : État pour le "Mode Radar" (Polling agressif après clic sur débloquer)
+  const [isUpgrading, setIsUpgrading] = useState(false);
   
   const consecutiveErrors = useRef(0);
   const prevDataRef = useRef(null);
@@ -51,9 +54,21 @@ const SpyDashboard = () => {
         if (consecutiveErrors.current > 3) setAccessDenied(true);
       } else {
         consecutiveErrors.current = 0;
-        if (prevDataRef.current && prevDataRef.current.status === 'pending' && result.status === 'accepted') {
-            triggerVictory();
+        
+        // DÉTECTION INTELLIGENTE DES CHANGEMENTS
+        if (prevDataRef.current) {
+            // 1. Victoire : Passage de Pending à Accepted
+            if (prevDataRef.current.status === 'pending' && result.status === 'accepted') {
+                triggerVictory();
+            }
+            // 2. Upgrade : Passage de Basic à Spy (Auto-Unlock)
+            if (prevDataRef.current.plan === 'basic' && result.plan === 'spy') {
+                console.log("🔓 UPGRADE DÉTECTÉ ! Déverrouillage immédiat.");
+                setIsUpgrading(false); // On arrête le mode radar
+                triggerVictory(); // Petit confetti de célébration
+            }
         }
+
         setData(result);
         prevDataRef.current = result;
         setLastRefreshed(new Date());
@@ -71,18 +86,28 @@ const SpyDashboard = () => {
     fetchData();
     const handleVisibilityChange = () => {
       pageVisibleRef.current = !document.hidden;
+      // Si l'utilisateur revient sur l'onglet, on rafraîchit immédiatement
       if (!document.hidden) fetchData(true);
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    const intervalDuration = (data && data.status === 'pending') ? 5000 : 60000;
+
+    // INTELLIGENCE POLLING :
+    // Si isUpgrading (l'utilisateur vient de cliquer sur payer) -> Check toutes les 2s
+    // Sinon Si jeu en cours -> Check toutes les 5s
+    // Sinon (Jeu fini) -> Check toutes les 60s
+    let intervalDuration = 60000;
+    if (isUpgrading) intervalDuration = 2000;
+    else if (data && data.status === 'pending') intervalDuration = 5000;
+
     pollingIntervalRef.current = setInterval(() => {
-      if (pageVisibleRef.current) fetchData(true);
+      if (pageVisibleRef.current || isUpgrading) fetchData(true);
     }, intervalDuration);
+
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
     };
-  }, [fetchData, data?.status]);
+  }, [fetchData, data?.status, isUpgrading]); // Ajout de isUpgrading aux dépendances
 
   const triggerVictory = () => {
     const duration = 3000;
@@ -102,26 +127,16 @@ const SpyDashboard = () => {
   };
 
   // --- INTELLIGENCE DATA & KPI ---
-  // Nous lisons directement 'attempts' qui est le vrai compteur d'esquives
   const totalRefusals = data?.attempts || 0; 
   const totalViews = data?.logs?.filter(l => l.action === 'viewed').length || 0;
   
-  // Le score d'intérêt inclut désormais les "refus" (qui prouvent une interaction active)
   let interestScore = 0;
   if (data) {
       interestScore += totalViews * 10;
-      interestScore += totalRefusals * 5; // Chaque fuite du bouton montre de l'intérêt !
+      interestScore += totalRefusals * 5; 
       if (hasAnswered) interestScore = 100;
       if (interestScore > 100) interestScore = 100;
   }
-
-  const getProfile = () => {
-      if (hasAnswered) return { title: "Conquise", desc: "Elle a dit OUI. Sortez le champagne." };
-      if (isRejected) return { title: "Glaciale", desc: "Mission échouée... pour l'instant." };
-      if (interestScore > 50) return { title: "Intéressée", desc: "Elle joue au chat et à la souris..." };
-      if (totalViews > 0) return { title: "Curieuse", desc: "Elle a ouvert l'enveloppe." };
-      return { title: "En Attente", desc: "Le corbeau n'est pas encore arrivé." };
-  };
 
   // --- RENDU UI ---
 
@@ -206,7 +221,7 @@ const SpyDashboard = () => {
             {/* A. COLONNE GAUCHE (Status & Analyse) */}
             <div className="lg:col-span-4 space-y-6">
                 
-                {/* Carte STATUS - DESIGN CORRIGÉ (ROUGE/OR au lieu de VERT) */}
+                {/* Carte STATUS - DESIGN ROBUSTE */}
                 <div className={`relative overflow-hidden rounded-3xl p-8 border backdrop-blur-xl transition-all duration-700 group
                     ${hasAnswered 
                         ? 'bg-gradient-to-br from-ruby-dark via-[#4a0a18] to-black border-rose-gold shadow-[0_0_40px_rgba(225,29,72,0.3)]' 
@@ -215,7 +230,6 @@ const SpyDashboard = () => {
                             : 'bg-gradient-to-br from-white/5 to-black/40 border-rose-gold/20'
                     }`}>
                     
-                    {/* Particules d'ambiance si gagné */}
                     {hasAnswered && <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] opacity-20 mix-blend-overlay animate-pulse-slow"></div>}
 
                     <div className="relative z-10 flex flex-col items-center text-center">
@@ -304,7 +318,7 @@ const SpyDashboard = () => {
                          ) : (
                              <div className={`space-y-3 transition-all duration-500 ${areDetailsLocked ? 'blur-[4px] opacity-30 select-none pointer-events-none' : ''}`}>
                                  
-                                 {/* On affiche d'abord un résumé des esquives si elles existent */}
+                                 {/* Résumé des esquives */}
                                  {totalRefusals > 0 && (
                                      <div className="flex items-center gap-5 p-4 rounded-xl bg-ruby-dark/30 border border-rose-gold/20 animate-pulse-slow">
                                          <div className="shrink-0 p-2 rounded-full bg-black/30 border border-ruby-light/30 text-ruby-light">
@@ -349,7 +363,7 @@ const SpyDashboard = () => {
                          )}
                     </div>
 
-                    {/* 4. LE LOCK SCREEN (AVEC LE LIEN CORRIGÉ ET TARGET BLANK) */}
+                    {/* 4. LE LOCK SCREEN (AVEC MODE RADAR ACTIVÉ) */}
                     {areDetailsLocked && (
                         <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/70 backdrop-blur-[6px]">
                             <div className="w-full max-w-sm mx-4 bg-[#1a0b12]/90 border border-rose-gold/30 p-8 rounded-2xl shadow-2xl relative">
@@ -364,15 +378,25 @@ const SpyDashboard = () => {
                                         L'accès aux adresses IP, heures exactes et détails des interactions est réservé au Rapport Complet.
                                     </p>
 
-                                    {/* LIEN DYNAMIQUE (Fix Redirection & Webhook) - CIBLE OBLIGATOIRE */}
+                                    {/* BOUTON DÉBLOQUER AVEC DÉCLENCHEUR RADAR */}
                                     <a 
                                        href={`${STRIPE_UPSELL_LINK}?client_reference_id=${id}`} 
                                        target="_blank" 
                                        rel="noreferrer" 
-                                       className="group w-full py-4 rounded-lg bg-rose-gold hover:bg-white text-ruby-dark text-xs font-bold uppercase tracking-[0.2em] shadow-lg transition-all flex items-center justify-center gap-3"
+                                       onClick={() => setIsUpgrading(true)} // <-- C'EST ICI QUE LA MAGIE OPÈRE
+                                       className="group w-full py-4 rounded-lg bg-rose-gold hover:bg-white text-ruby-dark text-xs font-bold uppercase tracking-[0.2em] shadow-lg transition-all flex items-center justify-center gap-3 cursor-pointer"
                                     >
-                                        <span>Débloquer (1€)</span>
-                                        <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform" />
+                                        {isUpgrading ? (
+                                            <>
+                                                <Loader2 size={14} className="animate-spin" />
+                                                <span>Vérification...</span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <span>Débloquer (1€)</span>
+                                                <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform" />
+                                            </>
+                                        )}
                                     </a>
                                 </div>
                             </div>

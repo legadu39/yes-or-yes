@@ -89,10 +89,10 @@ export default async function handler(req, res) {
       return res.status(200).json({ received: true, warning: 'No invitation ID found' });
     }
 
-    console.log(`💰 Paiement validé pour invitation: ${invitationId} (Raw: ${rawId})`);
+    console.log(`💰 Paiement reçu pour invitation: ${invitationId} (RawRef: ${rawId})`);
 
     try {
-      // 5. Vérification d'idempotence
+      // 5. Récupération de l'état ACTUEL avant mise à jour
       const { data: current, error: fetchError } = await supabaseAdmin
         .from('invitations')
         .select('payment_status, id, plan')
@@ -109,10 +109,7 @@ export default async function handler(req, res) {
         return res.status(404).json({ error: 'Invitation not found in DB' });
       }
 
-      // Note: On enlève la vérification stricte "déjà payé" ici car l'upsell est un 2ème paiement sur la même invitation
-      // Si c'était 'paid' en 'basic', on veut pouvoir passer en 'paid' en 'spy'.
-
-      // 6. INTELLIGENCE FINANCIÈRE : Correction automatique du Plan
+      // 6. INTELLIGENCE FINANCIÈRE : DÉCISION DU PLAN
       const amountPaid = session.amount_total; // en cents
       
       const updateData = { 
@@ -121,15 +118,24 @@ export default async function handler(req, res) {
         updated_at: new Date().toISOString()
       };
 
-      // REGLE CRITIQUE : 
-      // 250 cents = Achat initial Pack Spy
-      // 100 cents = Upsell (Achat additionnel pour passer Spy)
-      if (amountPaid === 250 || amountPaid === 100) {
-          console.log(`✨ UPGRADE DÉTECTÉ (${amountPaid} cents). Passage au plan 'spy'.`);
+      // --- LOGIQUE D'UPGRADE "PARANOIAQUE" (ROBUSTE) ---
+      // On force le passage en SPY si :
+      // A. Le montant ressemble à l'offre Spy (2.50€ +/- taxes)
+      // B. Le montant ressemble à l'offre Upsell (1.00€ +/- taxes)
+      // C. L'utilisateur a DÉJÀ payé (Basic) et repaie -> C'est forcément un upgrade
+      
+      const isSpyPrice = (amountPaid >= 230 && amountPaid <= 270); // 2.50€ +/-
+      const isUpsellPrice = (amountPaid >= 80 && amountPaid <= 130); // 1.00€ +/-
+      const isAlreadyPaid = current.payment_status === 'paid';
+
+      if (isSpyPrice || isUpsellPrice || isAlreadyPaid) {
+          console.log(`✨ UPGRADE DÉTECTÉ (Montant: ${amountPaid}, Déjà payé: ${isAlreadyPaid}). Passage au plan 'spy'.`);
           updateData.plan = 'spy';
+      } else {
+          console.log(`ℹ️ Paiement Standard (Montant: ${amountPaid}). Plan actuel conservé: ${current.plan}`);
       }
 
-      // 7. Mise à jour critique
+      // 7. Mise à jour DB
       const { error: updateError } = await supabaseAdmin
         .from('invitations')
         .update(updateData)
@@ -140,7 +146,7 @@ export default async function handler(req, res) {
         return res.status(500).json({ error: 'Database update failed', details: updateError.message });
       }
 
-      console.log(`✅ SUCCÈS : Invitation ${invitationId} mise à jour (Plan: ${updateData.plan || current.plan})`);
+      console.log(`✅ SUCCÈS : Invitation ${invitationId} mise à jour (Plan Final: ${updateData.plan || current.plan})`);
       return res.status(200).json({ received: true, status: 'updated_to_paid' });
 
     } catch (err) {

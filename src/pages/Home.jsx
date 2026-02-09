@@ -120,8 +120,8 @@ const Home = () => {
                     timestamp: new Date()
                 });
                 
-                // 📳 HAPTIC FEEDBACK
-                if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 400]);
+                // 📳 HAPTIC FEEDBACK SUPPRIMÉ (Prévention crash mobile/Intervention error)
+                // if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 400]);
 
                 clearInterval(pollingIntervalRef.current);
             }

@@ -24,32 +24,40 @@ const SpyDashboard = () => {
   const [connectionStatus, setConnectionStatus] = useState('connecting'); 
   const [lastRefreshed, setLastRefreshed] = useState(new Date());
   
-  // Intelligence Prix : On affiche le prix cohérent avec l'offre vue
-  const [storedOfferPrice, setStoredOfferPrice] = useState('2.50€');
+  // Intelligence Prix : On force 1€ par défaut car c'est un upgrade, et non l'offre initiale
+  const [storedOfferPrice, setStoredOfferPrice] = useState('1€');
 
   const consecutiveErrors = useRef(0);
   const prevDataRef = useRef(null);
   const pollingIntervalRef = useRef(null);
   const pageVisibleRef = useRef(true);
 
-  // --- LOGIQUE DE VÉRITÉ CUMULATIVE (Correction UI) ---
+  // --- LOGIQUE DE VÉRITÉ CUMULATIVE (Optimistic UI) ---
   
   // 1. Indices de paiement
   const urlIndicatesSuccess = searchParams.get('success') === 'true';
   const localKnowledge = ownedInvitations.find(i => i.id === id);
   
-  // 2. Est-ce qu'on est Spy ? (Si UNE SEULE condition est vraie, on débloque)
-  // C'est ici que l'UI Optimiste prend le pas sur la DB lente
+  // 2. Persistance "Optimiste" de session
+  // Si l'utilisateur a vu un succès une fois, on garde la porte ouverte même si la DB lag
+  const sessionUnlocked = sessionStorage.getItem(`spy_unlocked_${id}`) === 'true';
+
+  if (urlIndicatesSuccess && !sessionUnlocked) {
+      sessionStorage.setItem(`spy_unlocked_${id}`, 'true');
+  }
+
+  // 3. Est-ce qu'on est Spy ? (Si UNE SEULE condition est vraie, on débloque)
   const isSpy = 
     (data?.plan === 'spy') || 
     (localKnowledge?.plan === 'spy') || 
     (localKnowledge?.payment_status === 'paid') ||
+    sessionUnlocked || // Déblocage immédiat
     urlIndicatesSuccess;
 
   const hasAnswered = data && data.status === 'accepted';
   const isRejected = data && data.status === 'rejected';
   
-  // 3. Verrouillage : Uniquement si on n'est PAS spy
+  // 4. Verrouillage : Uniquement si on n'est PAS spy
   const areDetailsLocked = !isSpy;
 
   // --- PRÉPARATION LIENS & PRIX ---
@@ -59,7 +67,6 @@ const SpyDashboard = () => {
 
   useEffect(() => {
     // Si on vient d'un succès ou si on a déjà cliqué sur l'offre 1€, on force le prix visuel à 1€
-    // pour éviter d'afficher 2.50€ si le paiement a échoué techniquement
     const memory = sessionStorage.getItem(`offer_seen_${id}`);
     if (memory === '1_euro' || urlIndicatesSuccess) {
         setStoredOfferPrice('1€');
@@ -83,7 +90,7 @@ const SpyDashboard = () => {
       if (!isBackgroundRefresh) setLoading(true);
 
       // FORCE LA SYNC si on a un indice de succès (URL ou Contexte)
-      if (urlIndicatesSuccess || localKnowledge?.plan === 'spy') {
+      if (urlIndicatesSuccess || localKnowledge?.plan === 'spy' || sessionUnlocked) {
          // On passe le token pour permettre la reconstruction mémoire si nécessaire
          await verifyPaymentStatus(id, currentToken);
       }
@@ -117,7 +124,7 @@ const SpyDashboard = () => {
     } finally {
       if (!isBackgroundRefresh) setLoading(false);
     }
-  }, [id, searchParams, getSpyReport, verifyPaymentStatus, urlIndicatesSuccess, localKnowledge?.plan]);
+  }, [id, searchParams, getSpyReport, verifyPaymentStatus, urlIndicatesSuccess, localKnowledge?.plan, sessionUnlocked]);
 
   useEffect(() => {
     fetchData();
@@ -130,7 +137,7 @@ const SpyDashboard = () => {
     // Polling Adaptatif : Mode Turbo (1s) si on attend un déblocage imminent
     let intervalDuration = 60000; // Par défaut 1min
     if (data?.status === 'pending') intervalDuration = 5000;
-    if (urlIndicatesSuccess && data?.plan === 'basic') intervalDuration = 1000; 
+    if ((urlIndicatesSuccess || sessionUnlocked) && data?.plan === 'basic') intervalDuration = 1000; 
 
     pollingIntervalRef.current = setInterval(() => {
       if (pageVisibleRef.current) fetchData(true);
@@ -140,7 +147,7 @@ const SpyDashboard = () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
     };
-  }, [fetchData, data?.status, data?.plan, urlIndicatesSuccess]);
+  }, [fetchData, data?.status, data?.plan, urlIndicatesSuccess, sessionUnlocked]);
 
   const triggerVictory = () => {
     const duration = 3000;
@@ -400,28 +407,40 @@ const SpyDashboard = () => {
 
                     {/* 4. LE LOCK SCREEN INTELLIGENT (Correctif Prix & Logique) */}
                     {areDetailsLocked && (
-                        <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/70 backdrop-blur-[6px]">
-                            <div className="w-full max-w-sm mx-4 bg-[#1a0b12]/90 border border-rose-gold/30 p-8 rounded-2xl shadow-2xl relative">
-                                <div className="flex flex-col items-center text-center">
-                                    <div className="bg-rose-gold/10 p-4 rounded-full mb-4 border border-rose-gold/20">
-                                        <LockKeyhole size={24} className="text-rose-gold" />
+                        <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/80 backdrop-blur-md animate-fade-in">
+                            <div className="w-full max-w-sm mx-4 bg-[#1a0b12] border border-rose-gold/40 p-8 rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.8)] relative">
+                                
+                                {/* Badge "Accès Restreint" */}
+                                <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 bg-rose-gold text-ruby-dark text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-widest shadow-lg">
+                                    Zone Espion
+                                </div>
+
+                                <div className="flex flex-col items-center text-center mt-2">
+                                    <div className="bg-rose-gold/10 p-4 rounded-full mb-4 border border-rose-gold/20 shadow-[0_0_15px_rgba(225,29,72,0.2)]">
+                                        <LockKeyhole size={28} className="text-rose-gold" />
                                     </div>
-                                    <h3 className="text-xl font-serif text-cream mb-3">
-                                        Données Verrouillées
+                                    
+                                    <h3 className="text-2xl font-script text-rose-pale mb-2">
+                                        Rapport Complet
                                     </h3>
-                                    <p className="text-xs text-rose-pale/70 font-sans mb-8 leading-relaxed px-4">
-                                        L'accès aux adresses IP, heures exactes et détails des interactions est réservé au Rapport Complet.
+                                    
+                                    <p className="text-xs text-rose-pale/60 font-sans mb-6 leading-relaxed px-2">
+                                        Débloquez l'heure exacte des lectures, l'adresse IP, et le compteur de refus en temps réel.
                                     </p>
 
-                                    {/* BOUTON D'ACTION DYNAMIQUE (PRIX ADAPTATIF) */}
+                                    {/* BOUTON D'ACTION 1€ */}
                                     <a 
                                        href={upsellUrl} 
                                        onClick={handleUpsellClick}
-                                       className="group w-full py-4 rounded-lg bg-rose-gold hover:bg-white text-ruby-dark text-xs font-bold uppercase tracking-[0.2em] shadow-lg transition-all flex items-center justify-center gap-3 cursor-pointer"
+                                       className="group w-full py-4 rounded-lg bg-gradient-to-r from-rose-gold via-[#e8b594] to-rose-gold background-animate hover:bg-white text-ruby-dark text-xs font-bold uppercase tracking-[0.2em] shadow-lg transition-all flex items-center justify-center gap-3 cursor-pointer transform hover:scale-[1.02]"
                                     >
-                                        <span>Débloquer ({storedOfferPrice})</span>
+                                        <span>Débloquer maintenant ({storedOfferPrice})</span>
                                         <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform" />
                                     </a>
+                                    
+                                    <p className="mt-4 text-[9px] text-rose-gold/30 uppercase tracking-widest">
+                                        Paiement sécurisé & Anonyme
+                                    </p>
                                 </div>
                             </div>
                         </div>
@@ -445,6 +464,4 @@ const SpyDashboard = () => {
   );
 };
 
-export default SpyDashboard;  
-
-//
+export default SpyDashboard;

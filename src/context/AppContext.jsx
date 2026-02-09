@@ -60,23 +60,14 @@ export const AppProvider = ({ children }) => {
     }
 
     // --- INTELLIGENCE #2 : Anticipation Paiement (Check URL) ---
-    const checkForSuccessURL = () => {
-      if (typeof window !== 'undefined') {
+    // Si on revient de Stripe avec success=true, on déclenche une vérification immédiate
+    if (typeof window !== 'undefined') {
         const params = new URLSearchParams(window.location.search);
         if (params.get('success') === 'true') {
            console.log("🚀 URL Success détectée : Démarrage vérification paiement proactive...");
-           // On essaie de deviner l'ID concerné (soit dans l'URL, soit le dernier consulté)
-           // Ici, on fait un scan global de toutes les invitations owned pour vérifier si l'une est passée "paid"
-           const owned = getOwnedInvitations();
-           owned.forEach(invite => {
-               if (invite.plan === 'basic') {
-                   verifyPaymentStatus(invite.id);
-               }
-           });
+           // Note: Le composant SpyDashboard lancera aussi verifyPaymentStatus avec le token
         }
-      }
-    };
-    checkForSuccessURL();
+    }
 
     window.addEventListener('online', syncPendingActions);
     return () => window.removeEventListener('online', syncPendingActions);
@@ -112,10 +103,20 @@ export const AppProvider = ({ children }) => {
   const repairLocalMemory = (id, token, data) => {
     const stored = localStorage.getItem('yesoryes_owned') ? JSON.parse(localStorage.getItem('yesoryes_owned')) : [];
     const filtered = stored.filter(i => i.id !== id);
-    const newEntry = { id, token, createdAt: new Date().toISOString(), ...data };
+    // On garde le token existant ou on prend le nouveau
+    const finalToken = token || (stored.find(i => i.id === id)?.token);
+    
+    const newEntry = { 
+        id, 
+        token: finalToken, 
+        createdAt: new Date().toISOString(), 
+        ...data 
+    };
+    
     const newList = [newEntry, ...filtered];
     localStorage.setItem('yesoryes_owned', JSON.stringify(newList));
     setOwnedInvitations(newList);
+    return newEntry;
   };
 
   // NOUVEAUTÉ : Anti-Doublon (Opportunité #7)
@@ -184,6 +185,7 @@ export const AppProvider = ({ children }) => {
 
       if (!data) throw new Error("Erreur technique: Pas de retour DB.");
 
+      // Support des différents formats de retour possibles
       const newId = data.id || data.new_id;
       const newToken = data.admin_token || data.new_token || data.token;
 
@@ -378,8 +380,8 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  // --- INTELLIGENCE #3 : Vérification Paiement Renforcée ---
-  const verifyPaymentStatus = async (id) => {
+  // --- MODIFICATION CHIRURGICALE : Support Token + Reconstruction Mémoire ---
+  const verifyPaymentStatus = async (id, fallbackToken = null) => {
     try {
       console.log(`🔎 Vérification paiement pour ID: ${id}...`);
       const data = await getPublicInvitation(id);
@@ -388,11 +390,12 @@ export const AppProvider = ({ children }) => {
         const owned = getOwnedInvitations();
         const localEntry = owned.find(i => i.id === data.id);
 
+        // Cas 1 : L'invitation existe en local, on met à jour
         if (localEntry) {
           const hasPlanChanged = localEntry.plan !== data.plan;
           const hasStatusChanged = localEntry.payment_status !== data.payment_status;
 
-          // Si changement détecté OU si c'est le même plan mais qu'on force la vérif
+          // Si changement OU si on est spy (pour forcer le refresh)
           if (hasPlanChanged || hasStatusChanged || data.plan === 'spy') {
             console.log(`✨ Sync État Paiement/Plan : ${localEntry.plan} → ${data.plan}`);
             repairLocalMemory(data.id, localEntry.token, {
@@ -405,7 +408,18 @@ export const AppProvider = ({ children }) => {
                 return prev.map(p => p.id === data.id ? { ...p, plan: data.plan } : p);
             });
           }
+        } 
+        // Cas 2 (CRITIQUE) : Perte de mémoire mais Token fourni (URL) -> On reconstruit !
+        else if (fallbackToken) {
+            console.log("🛠️ Reconstruction mémoire locale avec Token fourni");
+            repairLocalMemory(data.id, fallbackToken, {
+                 plan: data.plan,
+                 payment_status: data.payment_status,
+                 sender: data.sender || "Moi",
+                 valentine: data.valentine || "Valentine"
+             });
         }
+        
         return true;
       }
       return false;

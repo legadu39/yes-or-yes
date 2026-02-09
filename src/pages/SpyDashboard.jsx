@@ -15,7 +15,7 @@ const SpyDashboard = () => {
   const { id } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  // INTELLIGENCE N°3 : Connexion au Cerveau Global (Context) pour la synchro d'état
+  // On récupère ownedInvitations pour la "Connaissance Locale" immédiate
   const { getSpyReport, verifyPaymentStatus, ownedInvitations } = useApp();
   
   const [data, setData] = useState(null);
@@ -24,7 +24,7 @@ const SpyDashboard = () => {
   const [connectionStatus, setConnectionStatus] = useState('connecting'); 
   const [lastRefreshed, setLastRefreshed] = useState(new Date());
   
-  // INTELLIGENCE N°2 : Mémoire de l'offre (Prix affiché cohérent)
+  // Intelligence Prix : On affiche le prix cohérent avec l'offre vue
   const [storedOfferPrice, setStoredOfferPrice] = useState('2.50€');
 
   const consecutiveErrors = useRef(0);
@@ -32,46 +32,46 @@ const SpyDashboard = () => {
   const pollingIntervalRef = useRef(null);
   const pageVisibleRef = useRef(true);
 
-  // --- LOGIQUE INTELLIGENTE D'ÉTAT (Fusion Optimiste) ---
+  // --- LOGIQUE DE VÉRITÉ CUMULATIVE (Correction UI) ---
   
-  // 1. Détection de l'intention de succès via l'URL (Retour Stripe)
-  const isPaymentSuccessUrl = searchParams.get('success') === 'true';
-
-  // 2. Récupération de la connaissance locale (Context)
-  // Si le contexte sait déjà qu'on est "spy", on l'utilise.
+  // 1. Indices de paiement
+  const urlIndicatesSuccess = searchParams.get('success') === 'true';
   const localKnowledge = ownedInvitations.find(i => i.id === id);
-  const contextPlan = localKnowledge?.plan;
+  
+  // 2. Est-ce qu'on est Spy ? (Si UNE SEULE condition est vraie, on débloque)
+  // C'est ici que l'UI Optimiste prend le pas sur la DB lente
+  const isSpy = 
+    (data?.plan === 'spy') || 
+    (localKnowledge?.plan === 'spy') || 
+    (localKnowledge?.payment_status === 'paid') ||
+    urlIndicatesSuccess;
 
-  // 3. Calcul du plan effectif (Priorité : URL Optimiste > Context > DB Fetch)
-  const rawPlan = data?.plan || 'basic';
-  const effectivePlan = isPaymentSuccessUrl ? 'spy' : (contextPlan === 'spy' ? 'spy' : rawPlan);
-
-  const isBasicPlan = effectivePlan === 'basic';
   const hasAnswered = data && data.status === 'accepted';
   const isRejected = data && data.status === 'rejected';
   
-  // Si on est "optimiste" (success=true), on déverrouille visuellement tout de suite
-  const areDetailsLocked = isBasicPlan && !isPaymentSuccessUrl; 
+  // 3. Verrouillage : Uniquement si on n'est PAS spy
+  const areDetailsLocked = !isSpy;
 
-  // --- PRÉPARATION DU LIEN UPSELL ---
+  // --- PRÉPARATION LIENS & PRIX ---
   const token = searchParams.get('token');
   const compositeId = token ? `${id}___${token}` : id;
   const upsellUrl = `${STRIPE_UPSELL_LINK}?client_reference_id=${compositeId}`;
 
-  // Initialisation : Vérifier si l'utilisateur avait vu l'offre 1€
   useEffect(() => {
+    // Si on vient d'un succès ou si on a déjà cliqué sur l'offre 1€, on force le prix visuel à 1€
+    // pour éviter d'afficher 2.50€ si le paiement a échoué techniquement
     const memory = sessionStorage.getItem(`offer_seen_${id}`);
-    if (memory === '1_euro') {
+    if (memory === '1_euro' || urlIndicatesSuccess) {
         setStoredOfferPrice('1€');
     }
-  }, [id]);
+  }, [id, urlIndicatesSuccess]);
 
-  // Handler intelligent pour le clic Upsell
   const handleUpsellClick = () => {
-      // On note dans le cerveau local qu'on a proposé 1€
+      // On mémorise qu'on a vu l'offre
       sessionStorage.setItem(`offer_seen_${id}`, '1_euro');
   };
 
+  // --- FETCHING & SYNCHRO ---
   const fetchData = useCallback(async (isBackgroundRefresh = false) => {
     try {
       const currentToken = searchParams.get('token');
@@ -82,10 +82,10 @@ const SpyDashboard = () => {
       }
       if (!isBackgroundRefresh) setLoading(true);
 
-      // Si on revient de paiement, on force une vérif DB via le Context
-      if (isPaymentSuccessUrl && !isBackgroundRefresh) {
-         console.log("🚀 Retour paiement détecté : Forçage synchro immédiate.");
-         await verifyPaymentStatus(id);
+      // FORCE LA SYNC si on a un indice de succès (URL ou Contexte)
+      if (urlIndicatesSuccess || localKnowledge?.plan === 'spy') {
+         // On passe le token pour permettre la reconstruction mémoire si nécessaire
+         await verifyPaymentStatus(id, currentToken);
       }
 
       const result = await getSpyReport(id, currentToken);
@@ -101,7 +101,7 @@ const SpyDashboard = () => {
             triggerVictory();
         }
 
-        // Si on passe de Basic à Spy (DB confirmée)
+        // Détection Déblocage (Basic -> Spy) - Visuel
         if (prevDataRef.current && prevDataRef.current.plan === 'basic' && result.plan === 'spy') {
              triggerVictory(); 
         }
@@ -117,7 +117,7 @@ const SpyDashboard = () => {
     } finally {
       if (!isBackgroundRefresh) setLoading(false);
     }
-  }, [id, searchParams, getSpyReport, verifyPaymentStatus, isPaymentSuccessUrl]);
+  }, [id, searchParams, getSpyReport, verifyPaymentStatus, urlIndicatesSuccess, localKnowledge?.plan]);
 
   useEffect(() => {
     fetchData();
@@ -127,8 +127,11 @@ const SpyDashboard = () => {
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     
-    // Polling adaptatif
-    const intervalDuration = (data && data.status === 'pending') ? 5000 : 60000;
+    // Polling Adaptatif : Mode Turbo (1s) si on attend un déblocage imminent
+    let intervalDuration = 60000; // Par défaut 1min
+    if (data?.status === 'pending') intervalDuration = 5000;
+    if (urlIndicatesSuccess && data?.plan === 'basic') intervalDuration = 1000; 
+
     pollingIntervalRef.current = setInterval(() => {
       if (pageVisibleRef.current) fetchData(true);
     }, intervalDuration);
@@ -137,7 +140,7 @@ const SpyDashboard = () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
     };
-  }, [fetchData, data?.status]);
+  }, [fetchData, data?.status, data?.plan, urlIndicatesSuccess]);
 
   const triggerVictory = () => {
     const duration = 3000;
@@ -167,7 +170,7 @@ const SpyDashboard = () => {
       if (interestScore > 100) interestScore = 100;
   }
 
-  // --- UI RENDERING ---
+  // --- RENDER UI ---
 
   if (loading && !data) {
     return (
@@ -223,9 +226,8 @@ const SpyDashboard = () => {
                     <span className="text-xs uppercase tracking-[0.3em] text-rose-gold/80 font-serif font-bold">
                         Dossier Confidentiel
                     </span>
-                    {/* Badge Mode Spy Actif */}
                     {!areDetailsLocked && (
-                        <span className="ml-2 bg-emerald-500/20 text-emerald-400 text-[10px] px-2 py-0.5 rounded border border-emerald-500/30 uppercase tracking-wider">
+                        <span className="ml-2 bg-emerald-500/20 text-emerald-400 text-[10px] px-2 py-0.5 rounded border border-emerald-500/30 uppercase tracking-wider animate-pulse">
                             Mode Espion Activé
                         </span>
                     )}
@@ -243,7 +245,7 @@ const SpyDashboard = () => {
                     </span>
                 </div>
                 <p className="text-[10px] text-rose-gold/40 font-mono flex items-center gap-2">
-                    <Clock size={10} /> Dernière mise à jour : {lastRefreshed.toLocaleTimeString()}
+                    <Clock size={10} /> Mise à jour : {lastRefreshed.toLocaleTimeString()}
                 </p>
             </div>
         </header>
@@ -396,7 +398,7 @@ const SpyDashboard = () => {
                          )}
                     </div>
 
-                    {/* 4. LE LOCK SCREEN INTELLIGENT */}
+                    {/* 4. LE LOCK SCREEN INTELLIGENT (Correctif Prix & Logique) */}
                     {areDetailsLocked && (
                         <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/70 backdrop-blur-[6px]">
                             <div className="w-full max-w-sm mx-4 bg-[#1a0b12]/90 border border-rose-gold/30 p-8 rounded-2xl shadow-2xl relative">

@@ -8,7 +8,20 @@ export const useApp = () => useContext(AppContext);
 export const AppProvider = ({ children }) => {
   const [ownedInvitations, setOwnedInvitations] = useState([]);
 
+  // FONCTION UTILITAIRE : Lire les invitations stockées
+  const getOwnedInvitations = () => {
+    const stored = localStorage.getItem('yesoryes_owned');
+    if (!stored) return [];
+    try {
+      const parsed = JSON.parse(stored);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      return [];
+    }
+  };
+
   useEffect(() => {
+    // Charge les invitations locales au montage
     const stored = localStorage.getItem('yesoryes_owned');
     if (stored) {
       try {
@@ -19,6 +32,7 @@ export const AppProvider = ({ children }) => {
       }
     }
 
+    // --- INTELLIGENCE #1 : Synchro différée (Réseau) ---
     const syncPendingActions = async () => {
       const pendingYes = localStorage.getItem('pending_acceptance');
       if (pendingYes) {
@@ -44,6 +58,25 @@ export const AppProvider = ({ children }) => {
     if (navigator.onLine) {
       syncPendingActions();
     }
+
+    // --- INTELLIGENCE #2 : Anticipation Paiement (Check URL) ---
+    const checkForSuccessURL = () => {
+      if (typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('success') === 'true') {
+           console.log("🚀 URL Success détectée : Démarrage vérification paiement proactive...");
+           // On essaie de deviner l'ID concerné (soit dans l'URL, soit le dernier consulté)
+           // Ici, on fait un scan global de toutes les invitations owned pour vérifier si l'une est passée "paid"
+           const owned = getOwnedInvitations();
+           owned.forEach(invite => {
+               if (invite.plan === 'basic') {
+                   verifyPaymentStatus(invite.id);
+               }
+           });
+        }
+      }
+    };
+    checkForSuccessURL();
 
     window.addEventListener('online', syncPendingActions);
     return () => window.removeEventListener('online', syncPendingActions);
@@ -92,12 +125,10 @@ export const AppProvider = ({ children }) => {
         throw new Error("Paramètres invalides");
       }
 
-      // --- HEURISTIQUE ANTI-DOUBLON (CORRIGÉE) ---
+      // --- HEURISTIQUE ANTI-DOUBLON ---
       const owned = getOwnedInvitations();
 
       const recentDuplicate = owned.find(invite => {
-        // CORRECTION : On s'assure que les champs existent avant le toLowerCase()
-        // Cela empêche le crash si localStorage contient de vieilles données sans 'sender'
         const inviteSender = (invite.sender || "").toLowerCase().trim();
         const inviteValentine = (invite.valentine || "").toLowerCase().trim();
         
@@ -121,7 +152,6 @@ export const AppProvider = ({ children }) => {
         console.log("⚠️ Doublon détecté. Réutilisation de l'invitation existante.");
 
         const timeAgo = Math.floor((Date.now() - new Date(recentDuplicate.createdAt)) / 1000);
-        // On évite les temps négatifs ou NaN
         const displayTime = isNaN(timeAgo) ? "quelques" : timeAgo;
         
         const reuse = window.confirm(
@@ -154,7 +184,6 @@ export const AppProvider = ({ children }) => {
 
       if (!data) throw new Error("Erreur technique: Pas de retour DB.");
 
-      // Support des différents formats de retour possibles
       const newId = data.id || data.new_id;
       const newToken = data.admin_token || data.new_token || data.token;
 
@@ -179,7 +208,6 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  // NOUVEAUTÉ : Récupération Heuristique (Opportunité #5)
   const intelligentRecovery = async (partialInfo) => {
     const owned = getOwnedInvitations();
 
@@ -215,19 +243,16 @@ export const AppProvider = ({ children }) => {
     );
 
     if (recentInvites.length === 1) {
-      console.log("🔍 Récupération heuristique : 1 seule invitation récente trouvée");
       return recentInvites[0];
     }
 
     // HEURISTIQUE 4 : Plusieurs candidats -> Plus récente
     if (recentInvites.length > 1) {
-      console.log("⚠️ Ambiguïté : Plusieurs invitations récentes. Prise de la dernière.");
       return recentInvites.sort((a, b) => 
         new Date(b.createdAt) - new Date(a.createdAt)
       )[0];
     }
 
-    console.log("❌ Aucune récupération possible");
     return null;
   };
 
@@ -261,17 +286,6 @@ export const AppProvider = ({ children }) => {
     } catch (error) {
       console.error("Accès refusé ou erreur rapport espion", error);
       return null;
-    }
-  };
-
-  const getOwnedInvitations = () => {
-    const stored = localStorage.getItem('yesoryes_owned');
-    if (!stored) return [];
-    try {
-      const parsed = JSON.parse(stored);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch (e) {
-      return [];
     }
   };
 
@@ -364,8 +378,10 @@ export const AppProvider = ({ children }) => {
     }
   };
 
+  // --- INTELLIGENCE #3 : Vérification Paiement Renforcée ---
   const verifyPaymentStatus = async (id) => {
     try {
+      console.log(`🔎 Vérification paiement pour ID: ${id}...`);
       const data = await getPublicInvitation(id);
 
       if (data && data.payment_status === 'paid') {
@@ -376,12 +392,17 @@ export const AppProvider = ({ children }) => {
           const hasPlanChanged = localEntry.plan !== data.plan;
           const hasStatusChanged = localEntry.payment_status !== data.payment_status;
 
-          if (hasPlanChanged || hasStatusChanged) {
+          // Si changement détecté OU si c'est le même plan mais qu'on force la vérif
+          if (hasPlanChanged || hasStatusChanged || data.plan === 'spy') {
             console.log(`✨ Sync État Paiement/Plan : ${localEntry.plan} → ${data.plan}`);
             repairLocalMemory(data.id, localEntry.token, {
               ...localEntry,
               plan: data.plan,
               payment_status: data.payment_status
+            });
+            // Mise à jour de l'état React pour ré-rendu immédiat
+            setOwnedInvitations(prev => {
+                return prev.map(p => p.id === data.id ? { ...p, plan: data.plan } : p);
             });
           }
         }

@@ -15,7 +15,8 @@ const SpyDashboard = () => {
   const { id } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { getSpyReport } = useApp();
+  // INTELLIGENCE N°3 : Connexion au Cerveau Global (Context) pour la synchro d'état
+  const { getSpyReport, verifyPaymentStatus, ownedInvitations } = useApp();
   
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -23,22 +24,53 @@ const SpyDashboard = () => {
   const [connectionStatus, setConnectionStatus] = useState('connecting'); 
   const [lastRefreshed, setLastRefreshed] = useState(new Date());
   
+  // INTELLIGENCE N°2 : Mémoire de l'offre (Prix affiché cohérent)
+  const [storedOfferPrice, setStoredOfferPrice] = useState('2.50€');
+
   const consecutiveErrors = useRef(0);
   const prevDataRef = useRef(null);
   const pollingIntervalRef = useRef(null);
   const pageVisibleRef = useRef(true);
 
-  // --- LOGIQUE MÉTIER ---
-  const isBasicPlan = data && data.plan === 'basic';
+  // --- LOGIQUE INTELLIGENTE D'ÉTAT (Fusion Optimiste) ---
+  
+  // 1. Détection de l'intention de succès via l'URL (Retour Stripe)
+  const isPaymentSuccessUrl = searchParams.get('success') === 'true';
+
+  // 2. Récupération de la connaissance locale (Context)
+  // Si le contexte sait déjà qu'on est "spy", on l'utilise.
+  const localKnowledge = ownedInvitations.find(i => i.id === id);
+  const contextPlan = localKnowledge?.plan;
+
+  // 3. Calcul du plan effectif (Priorité : URL Optimiste > Context > DB Fetch)
+  const rawPlan = data?.plan || 'basic';
+  const effectivePlan = isPaymentSuccessUrl ? 'spy' : (contextPlan === 'spy' ? 'spy' : rawPlan);
+
+  const isBasicPlan = effectivePlan === 'basic';
   const hasAnswered = data && data.status === 'accepted';
   const isRejected = data && data.status === 'rejected';
-  const areDetailsLocked = isBasicPlan; 
+  
+  // Si on est "optimiste" (success=true), on déverrouille visuellement tout de suite
+  const areDetailsLocked = isBasicPlan && !isPaymentSuccessUrl; 
 
-  // --- INTELLIGENCE SÉCURITÉ : PRÉPARATION DU LIEN UPSELL ---
-  // On attache le token à l'ID pour qu'il survive à l'aller-retour Stripe
+  // --- PRÉPARATION DU LIEN UPSELL ---
   const token = searchParams.get('token');
   const compositeId = token ? `${id}___${token}` : id;
   const upsellUrl = `${STRIPE_UPSELL_LINK}?client_reference_id=${compositeId}`;
+
+  // Initialisation : Vérifier si l'utilisateur avait vu l'offre 1€
+  useEffect(() => {
+    const memory = sessionStorage.getItem(`offer_seen_${id}`);
+    if (memory === '1_euro') {
+        setStoredOfferPrice('1€');
+    }
+  }, [id]);
+
+  // Handler intelligent pour le clic Upsell
+  const handleUpsellClick = () => {
+      // On note dans le cerveau local qu'on a proposé 1€
+      sessionStorage.setItem(`offer_seen_${id}`, '1_euro');
+  };
 
   const fetchData = useCallback(async (isBackgroundRefresh = false) => {
     try {
@@ -49,6 +81,12 @@ const SpyDashboard = () => {
           return;
       }
       if (!isBackgroundRefresh) setLoading(true);
+
+      // Si on revient de paiement, on force une vérif DB via le Context
+      if (isPaymentSuccessUrl && !isBackgroundRefresh) {
+         console.log("🚀 Retour paiement détecté : Forçage synchro immédiate.");
+         await verifyPaymentStatus(id);
+      }
 
       const result = await getSpyReport(id, currentToken);
 
@@ -63,7 +101,7 @@ const SpyDashboard = () => {
             triggerVictory();
         }
 
-        // Si on revient d'un paiement et qu'on est passé Spy
+        // Si on passe de Basic à Spy (DB confirmée)
         if (prevDataRef.current && prevDataRef.current.plan === 'basic' && result.plan === 'spy') {
              triggerVictory(); 
         }
@@ -79,7 +117,7 @@ const SpyDashboard = () => {
     } finally {
       if (!isBackgroundRefresh) setLoading(false);
     }
-  }, [id, searchParams, getSpyReport]);
+  }, [id, searchParams, getSpyReport, verifyPaymentStatus, isPaymentSuccessUrl]);
 
   useEffect(() => {
     fetchData();
@@ -89,7 +127,7 @@ const SpyDashboard = () => {
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     
-    // Polling standard (toutes les minutes, ou 5s si jeu en cours)
+    // Polling adaptatif
     const intervalDuration = (data && data.status === 'pending') ? 5000 : 60000;
     pollingIntervalRef.current = setInterval(() => {
       if (pageVisibleRef.current) fetchData(true);
@@ -118,7 +156,6 @@ const SpyDashboard = () => {
     navigator.clipboard.writeText(link);
   };
 
-  // --- INTELLIGENCE DATA & KPI ---
   const totalRefusals = data?.attempts || 0; 
   const totalViews = data?.logs?.filter(l => l.action === 'viewed').length || 0;
   
@@ -130,7 +167,7 @@ const SpyDashboard = () => {
       if (interestScore > 100) interestScore = 100;
   }
 
-  // --- RENDU UI ---
+  // --- UI RENDERING ---
 
   if (loading && !data) {
     return (
@@ -186,6 +223,12 @@ const SpyDashboard = () => {
                     <span className="text-xs uppercase tracking-[0.3em] text-rose-gold/80 font-serif font-bold">
                         Dossier Confidentiel
                     </span>
+                    {/* Badge Mode Spy Actif */}
+                    {!areDetailsLocked && (
+                        <span className="ml-2 bg-emerald-500/20 text-emerald-400 text-[10px] px-2 py-0.5 rounded border border-emerald-500/30 uppercase tracking-wider">
+                            Mode Espion Activé
+                        </span>
+                    )}
                 </div>
                 <h1 className="text-6xl md:text-7xl font-script text-transparent bg-clip-text bg-gradient-to-r from-rose-pale via-cream to-rose-gold drop-shadow-md">
                     Rapport Cupidon
@@ -211,7 +254,7 @@ const SpyDashboard = () => {
             {/* A. COLONNE GAUCHE (Status & Analyse) */}
             <div className="lg:col-span-4 space-y-6">
                 
-                {/* Carte STATUS - DESIGN ROBUSTE */}
+                {/* Carte STATUS */}
                 <div className={`relative overflow-hidden rounded-3xl p-8 border backdrop-blur-xl transition-all duration-700 group
                     ${hasAnswered 
                         ? 'bg-gradient-to-br from-ruby-dark via-[#4a0a18] to-black border-rose-gold shadow-[0_0_40px_rgba(225,29,72,0.3)]' 
@@ -268,7 +311,7 @@ const SpyDashboard = () => {
                     </div>
                 </div>
 
-                {/* KPI Grid - INTELLIGENCE DATA */}
+                {/* KPI Grid */}
                 <div className="grid grid-cols-2 gap-4">
                     <div className="bg-white/5 border border-white/5 rounded-2xl p-4 text-center">
                         <div className="text-3xl font-script text-cream mb-1">{totalViews}</div>
@@ -353,7 +396,7 @@ const SpyDashboard = () => {
                          )}
                     </div>
 
-                    {/* 4. LE LOCK SCREEN (RETOUR AU MODE CLASSIQUE - MÊME PAGE) */}
+                    {/* 4. LE LOCK SCREEN INTELLIGENT */}
                     {areDetailsLocked && (
                         <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/70 backdrop-blur-[6px]">
                             <div className="w-full max-w-sm mx-4 bg-[#1a0b12]/90 border border-rose-gold/30 p-8 rounded-2xl shadow-2xl relative">
@@ -368,12 +411,13 @@ const SpyDashboard = () => {
                                         L'accès aux adresses IP, heures exactes et détails des interactions est réservé au Rapport Complet.
                                     </p>
 
-                                    {/* MODIFICATION : Lien utilisant upsellUrl sécurisé */}
+                                    {/* BOUTON D'ACTION DYNAMIQUE (PRIX ADAPTATIF) */}
                                     <a 
                                        href={upsellUrl} 
+                                       onClick={handleUpsellClick}
                                        className="group w-full py-4 rounded-lg bg-rose-gold hover:bg-white text-ruby-dark text-xs font-bold uppercase tracking-[0.2em] shadow-lg transition-all flex items-center justify-center gap-3 cursor-pointer"
                                     >
-                                        <span>Débloquer (1€)</span>
+                                        <span>Débloquer ({storedOfferPrice})</span>
                                         <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform" />
                                     </a>
                                 </div>

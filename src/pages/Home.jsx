@@ -4,7 +4,7 @@ import { useApp } from '../context/AppContext';
 import { 
   Eye, Sparkles, Copy, Heart, TrendingUp, CreditCard, 
   Timer, Loader2, Check, Shield, RefreshCw, PartyPopper, Lock, Crown, 
-  Play, X, MousePointer2, Music, VolumeX, MailOpen
+  Play, X, MousePointer2, Music, VolumeX, MailOpen, AlertTriangle
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -28,21 +28,12 @@ const capitalize = (str) => {
     return str.charAt(0).toUpperCase() + str.slice(1);
 };
 
-// --- LE CŒUR DU PIÈGE (PORTAGE DE VALENTINEPAGE POUR LA DÉMO) ---
+// --- LE CŒUR DU PIÈGE (DÉMO SIMPLIFIÉE) ---
 const ValentineDemo = ({ onClose }) => {
-    // États du jeu
     const [step, setStep] = useState('envelope'); // envelope | game | success
-    const [noBtnStyle, setNoBtnStyle] = useState({});
+    const [btnOffset, setBtnOffset] = useState({ x: 0, y: 0 });
     const [isPlaying, setIsPlaying] = useState(false);
-    const [yesScale, setYesScale] = useState(1);
-    
-    // Moteur Physique (Le Vrai)
-    const [escapeCount, setEscapeCount] = useState(0);
-    const [fatigueLevel, setFatigueLevel] = useState(0);
-    
     const audioRef = useRef(null);
-    const btnRef = useRef(null);
-    const containerRef = useRef(null); // Pour confiner le bouton dans la démo
 
     // Init Audio
     useEffect(() => {
@@ -54,9 +45,7 @@ const ValentineDemo = ({ onClose }) => {
 
     const handleStart = (e) => {
         e.stopPropagation();
-        if (audioRef.current) {
-            audioRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
-        }
+        if (audioRef.current) audioRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
         setStep('game');
     };
 
@@ -66,62 +55,12 @@ const ValentineDemo = ({ onClose }) => {
         else { audioRef.current.play(); setIsPlaying(true); }
     };
 
-    // --- MOTEUR PHYSIQUE ADAPTÉ (COORDONNÉES RELATIVES) ---
+    // Logique de fuite (Version Démo)
     const moveButton = (e) => {
-        if (step !== 'game' || !containerRef.current) return;
-
-        const containerRect = containerRef.current.getBoundingClientRect();
-        
-        // Calcul position souris relative au conteneur
-        let clientX = (e.touches ? e.touches[0].clientX : e.clientX) - containerRect.left;
-        let clientY = (e.touches ? e.touches[0].clientY : e.clientY) - containerRect.top;
-
-        // Fatigue
-        const fatigueIncrement = e.type.includes('touch') ? 10 : 4;
-        const newFatigue = Math.min(fatigueLevel + fatigueIncrement, 100);
-        setFatigueLevel(newFatigue);
-        setEscapeCount(prev => prev + 1);
-        setYesScale(prev => Math.min(prev + 0.05, 1.5)); // Scale un peu moins violent pour la démo
-
-        // Physique
-        const vivacity = Math.max(0.1, 1 - (newFatigue / 80));
-        const baseJump = 80; // Réduit pour la petite fenêtre
-        const jumpDistance = baseJump * vivacity;
-        const transitionTime = Math.max(0.2, 0.8 - (vivacity * 0.6));
-
-        // Calcul Vecteur
-        const btnRect = btnRef.current ? btnRef.current.getBoundingClientRect() : { width: 80, height: 40, left: 0, top: 0 };
-        // On convertit btnRect en relatif aussi pour le centre
-        const btnCenterX = (btnRect.left - containerRect.left) + btnRect.width / 2;
-        const btnCenterY = (btnRect.top - containerRect.top) + btnRect.height / 2;
-
-        let dirX = btnCenterX - clientX;
-        let dirY = btnCenterY - clientY;
-        const length = Math.sqrt(dirX * dirX + dirY * dirY) || 1;
-        dirX /= length; dirY /= length;
-
-        const angleJitter = (Math.random() - 0.5) * 2.0;
-        const finalDirX = dirX * Math.cos(angleJitter) - dirY * Math.sin(angleJitter);
-        const finalDirY = dirX * Math.sin(angleJitter) + dirY * Math.cos(angleJitter);
-
-        let nextX = (btnRect.left - containerRect.left) + (finalDirX * jumpDistance);
-        let nextY = (btnRect.top - containerRect.top) + (finalDirY * jumpDistance);
-
-        // Garde-fous (Rester dans le conteneur)
-        const padding = 10;
-        const maxX = containerRect.width - btnRect.width - padding;
-        const maxY = containerRect.height - btnRect.height - padding;
-
-        nextX = Math.max(padding, Math.min(nextX, maxX));
-        nextY = Math.max(padding, Math.min(nextY, maxY));
-
-        setNoBtnStyle({
-            position: 'absolute', // Important pour la démo
-            left: `${nextX}px`,
-            top: `${nextY}px`,
-            transition: `all ${transitionTime}s cubic-bezier(0.25, 0.46, 0.45, 0.94)`,
-            zIndex: 50
-        });
+        // Déplacement aléatoire contraint pour rester dans la modale
+        const x = (Math.random() - 0.5) * 200; // Amplitude X
+        const y = (Math.random() - 0.5) * 150; // Amplitude Y
+        setBtnOffset({ x, y });
     };
 
     const handleYes = () => {
@@ -130,13 +69,11 @@ const ValentineDemo = ({ onClose }) => {
     };
 
     return (
-        <div ref={containerRef} className="flex-1 bg-ruby-dark relative overflow-hidden flex flex-col items-center justify-center w-full h-full rounded-[2rem]">
+        <div className="flex-1 bg-ruby-dark relative overflow-hidden flex flex-col items-center justify-center w-full h-full rounded-[2rem]">
             <div className="absolute inset-0 pointer-events-none opacity-30 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]"></div>
             
-            {/* CLOSE */}
             <button onClick={onClose} className="absolute top-4 right-4 z-50 p-2 bg-black/50 rounded-full text-white/50 hover:text-white transition-all"><X size={16} /></button>
 
-            {/* MUSIQUE TOGGLE */}
             {step !== 'envelope' && (
                 <button onClick={toggleMusic} className="absolute top-4 left-4 z-50 p-2 rounded-full bg-ruby-dark/50 border border-rose-gold/30 text-rose-pale">
                     {isPlaying ? <Music size={14} className="animate-pulse" /> : <VolumeX size={14} />}
@@ -162,24 +99,38 @@ const ValentineDemo = ({ onClose }) => {
                         <span className="text-ruby-light">Valentine ?</span>
                     </h1>
 
-                    <div className="w-full relative h-[120px] flex flex-col items-center justify-center gap-4">
+                    <div className="w-full relative h-[150px] flex flex-col items-center gap-4">
                         <button 
                             onClick={handleYes}
-                            style={{ transform: `scale(${yesScale})` }}
-                            className="w-full max-w-[200px] py-3 bg-gradient-to-r from-rose-gold to-[#e8b594] text-ruby-dark font-bold uppercase tracking-widest rounded-full shadow-lg z-20 transition-transform duration-300"
+                            className="w-full max-w-[200px] py-3 bg-gradient-to-r from-rose-gold to-[#e8b594] text-ruby-dark font-bold uppercase tracking-widest rounded-full shadow-lg z-20 transition-transform hover:scale-105"
                         >
                             OUI !
                         </button>
 
-                        <button
-                            ref={btnRef}
-                            style={noBtnStyle}
-                            onMouseEnter={moveButton}
-                            onTouchStart={moveButton}
-                            className="px-6 py-2 border border-rose-gold/30 text-rose-gold/50 font-bold uppercase tracking-widest rounded-full text-[10px] absolute"
-                        >
-                            {escapeCount === 0 ? "Non" : fatigueLevel > 80 ? "Pff..." : "Jamais"}
-                        </button>
+                        {/* Le Bouton Qui Fuit */}
+                        <div className="relative w-full flex justify-center h-12">
+                            <button
+                                onMouseEnter={moveButton}
+                                onClick={moveButton} // Pour le tactile
+                                style={{
+                                    transform: `translate(${btnOffset.x}px, ${btnOffset.y}px)`,
+                                    transition: 'all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94)'
+                                }}
+                                className="px-6 py-2 border border-rose-gold/30 text-rose-gold/50 font-bold uppercase tracking-widest rounded-full text-[10px] absolute top-0"
+                            >
+                                NON
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* MENTION STRATÉGIQUE */}
+                    <div className="mt-12 bg-black/40 border border-rose-gold/10 p-3 rounded-lg max-w-[250px] mx-auto animate-pulse">
+                        <p className="text-[9px] text-rose-gold/60 uppercase tracking-widest font-bold flex items-center justify-center gap-2">
+                            <AlertTriangle size={10} /> Mode Démo Simplifié
+                        </p>
+                        <p className="text-[9px] text-rose-gold/40 mt-1 italic">
+                            Le moteur physique réel est 10x plus rapide et intelligent.
+                        </p>
                     </div>
                 </div>
             )}

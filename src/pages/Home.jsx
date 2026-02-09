@@ -208,6 +208,14 @@ const Home = () => {
             };
 
             repairLocalMemory(finalInvite.id, foundToken, finalInvite);
+
+            // INTELLIGENCE DE REDIRECTION (UPSell Fix) :
+            if (!stateParam && foundToken && finalInvite.plan === 'spy') {
+                 console.log("🔄 Retour Upsell détecté -> Redirection Dashboard");
+                 navigate(`/spy/${finalInvite.id}?token=${foundToken}`);
+                 return;
+            }
+
             displaySuccess(finalInvite, foundToken);
         } else {
             // Paiement pas encore propagé -> Polling
@@ -385,34 +393,41 @@ const Home = () => {
           <h2 className="text-3xl font-script text-rose-pale mb-2">Invitation Prête</h2>
           <p className="text-rose-pale/60 mb-8">Le destin de {formData.valentine} est entre vos mains.</p>
 
-          {/* --- INTELLIGENCE : NOTIFICATION LIVE "ELLE A DIT OUI" (REDESIGN LUXE) --- */}
+          {/* --- NOTIFICATION LIVE "ELLE A DIT OUI" (REDESIGN LUXE) --- */}
           {answerReceived && (
-              <div className="mb-8 p-6 bg-gradient-to-br from-[#2a0a12] to-black rounded-xl shadow-2xl shadow-rose-900/40 animate-bounce-slow flex flex-col items-center text-center border border-rose-gold relative overflow-hidden group transform hover:scale-105 transition-transform">
+              <div className="mb-10 p-1 relative group transform hover:scale-105 transition-transform duration-500 animate-bounce-slow cursor-pointer">
+                  {/* Bordure brillante animée */}
+                  <div className="absolute inset-0 bg-gradient-to-r from-rose-gold via-ruby-light to-rose-gold rounded-2xl blur opacity-75 group-hover:opacity-100 transition duration-1000 animate-pulse"></div>
                   
-                  {/* Effet Brillance Gold */}
-                  <div className="absolute top-0 -left-[100%] w-[50%] h-full bg-gradient-to-r from-transparent via-rose-gold/20 to-transparent transform -skew-x-25 group-hover:left-[200%] transition-all duration-1000 ease-in-out"></div>
-                  
-                  <div className="flex items-center gap-3 mb-2 relative z-10">
-                    <Crown className="w-8 h-8 text-rose-gold animate-pulse" fill="currentColor" />
-                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-rose-gold via-cream to-rose-gold font-script text-3xl font-bold tracking-wide drop-shadow-md">
-                        ELLE A DIT OUI !
-                    </span>
-                    <Crown className="w-8 h-8 text-rose-gold animate-pulse" fill="currentColor" />
+                  <div className="relative bg-ruby-dark border border-rose-gold/50 rounded-2xl p-6 flex flex-col items-center text-center shadow-2xl overflow-hidden">
+                      {/* Effet de brillance traversant */}
+                      <div className="absolute top-0 -left-[100%] w-[50%] h-full bg-gradient-to-r from-transparent via-white/10 to-transparent transform -skew-x-25 animate-shine pointer-events-none"></div>
+
+                      <div className="flex items-center justify-center gap-4 mb-3">
+                          <Heart className="w-8 h-8 text-ruby-light fill-ruby-light animate-ping absolute opacity-50" />
+                          <Heart className="w-8 h-8 text-rose-gold fill-ruby-DEFAULT animate-pulse relative z-10" />
+                          
+                          <h3 className="text-3xl md:text-4xl font-script text-transparent bg-clip-text bg-gradient-to-r from-rose-gold via-cream to-rose-gold drop-shadow-md">
+                              ELLE A DIT OUI !
+                          </h3>
+                          
+                          <Heart className="w-8 h-8 text-rose-gold fill-ruby-DEFAULT animate-pulse relative z-10" />
+                      </div>
+
+                      <p className="text-rose-pale/90 font-serif italic text-lg mb-4">
+                          <span className="font-bold text-white">{answerReceived.name}</span> a accepté votre invitation à l'instant.
+                      </p>
+
+                      {/* Bouton pour voir le détail si on a le token */}
+                      {monitoringToken && (
+                           <button 
+                             onClick={() => window.open(generatedLinks.spy, '_blank')}
+                             className="mt-2 px-8 py-3 bg-gradient-to-r from-rose-gold to-amber-200 hover:to-white text-ruby-dark rounded-full font-bold text-xs uppercase tracking-[0.2em] shadow-[0_0_20px_rgba(225,183,144,0.4)] transition-all transform active:scale-95 flex items-center gap-2"
+                           >
+                             <Eye size={16} /> Voir le Rapport
+                           </button>
+                      )}
                   </div>
-                  
-                  <p className="text-rose-pale/80 text-sm mb-4 font-serif italic">
-                    {answerReceived.name} a accepté votre invitation à l'instant.
-                  </p>
-                  
-                  {/* Bouton pour voir le détail si on a le token */}
-                  {monitoringToken && (
-                       <button 
-                         onClick={() => window.open(generatedLinks.spy, '_blank')}
-                         className="px-6 py-2 bg-rose-gold hover:bg-white text-ruby-dark rounded-full font-bold text-xs uppercase tracking-widest shadow-lg transition-colors flex items-center gap-2"
-                       >
-                         <Eye size={14} /> Voir les détails
-                       </button>
-                  )}
               </div>
           )}
 

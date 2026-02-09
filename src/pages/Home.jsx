@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { 
   Eye, Sparkles, Copy, Heart, TrendingUp, CreditCard, 
-  Timer, Loader2, Check, Shield, RefreshCw, PartyPopper, Lock
+  Timer, Loader2, Check, Shield, RefreshCw, PartyPopper, Lock, Crown
 } from 'lucide-react';
 
 // --- CONFIGURATION ---
@@ -25,7 +25,6 @@ const Home = () => {
   const [searchParams] = useSearchParams();
   const { 
     createInvitation, 
-    getSpyReport, 
     verifyPaymentStatus, 
     getPublicInvitation, 
     getOwnedInvitations,
@@ -322,26 +321,8 @@ const Home = () => {
       const returnUrl = encodeURIComponent(`${window.location.origin}?payment_id=${id}&success=true&state=${statePayload}`);
       const stripeUrl = (formData.plan === 'spy' || formData.plan === 'premium') ? STRIPE_LINKS.spy : STRIPE_LINKS.basic;
       
-      // window.location.href = `${stripeUrl}?client_reference_id=${id}&redirect_url=${returnUrl}`;
-
-      // --- NOUVEAU CODE (MODE TEST BYPASS) ---
-      console.log("🚀 MODE TEST ACTIVÉ : Paiement ignoré");
-      
-      // On simule l'objet invité comme s'il revenait du serveur
-      const fakeInvite = {
-          id: id,
-          sender: formData.sender,
-          valentine: formData.valentine,
-          plan: formData.plan,
-          payment_status: 'paid' // On force le statut payé
-      };
-
-      // On force la sauvegarde locale et l'affichage du succès
-      // Note: Il faut appeler repairLocalMemory si elle est accessible, 
-      // sinon on simule juste l'affichage.
-      
-      // Ici on appelle directement la fonction d'affichage du succès
-      displaySuccess(fakeInvite, token);
+      // PRODUCTION : Redirection Stripe
+      window.location.href = `${stripeUrl}?client_reference_id=${id}&redirect_url=${returnUrl}`;
 
     } catch (error) {
       console.error("Erreur handleSubmit:", error);
@@ -396,23 +377,30 @@ const Home = () => {
         <div className="max-w-2xl w-full bg-ruby-DEFAULT/10 backdrop-blur-md border border-rose-gold/20 rounded-3xl p-8 text-center shadow-2xl relative">
           
           <div className="flex justify-center mb-6">
-            <div className="w-16 h-16 bg-green-500/20 rounded-full flex items-center justify-center border border-green-500/50 shadow-[0_0_30px_rgba(34,197,94,0.3)]">
-              <Check className="text-green-400 w-8 h-8" />
+            <div className="w-16 h-16 bg-rose-gold/10 rounded-full flex items-center justify-center border border-rose-gold/30 shadow-[0_0_30px_rgba(225,29,72,0.3)]">
+              <Check className="text-rose-gold w-8 h-8" />
             </div>
           </div>
 
           <h2 className="text-3xl font-script text-rose-pale mb-2">Invitation Prête</h2>
           <p className="text-rose-pale/60 mb-8">Le destin de {formData.valentine} est entre vos mains.</p>
 
-          {/* --- INTELLIGENCE : NOTIFICATION LIVE "ELLE A DIT OUI" --- */}
+          {/* --- INTELLIGENCE : NOTIFICATION LIVE "ELLE A DIT OUI" (REDESIGN LUXE) --- */}
           {answerReceived && (
-              <div className="mb-8 p-6 bg-gradient-to-r from-emerald-600 to-green-600 rounded-xl shadow-xl shadow-green-900/50 animate-bounce flex flex-col items-center text-center border border-white/20 relative overflow-hidden group transform hover:scale-105 transition-transform">
-                  <div className="absolute inset-0 bg-white/10 transform -skew-x-12 -translate-x-full group-hover:translate-x-full transition-transform duration-700"></div>
-                  <div className="flex items-center gap-3 mb-2">
-                    <PartyPopper className="w-8 h-8 text-white animate-wiggle" />
-                    <span className="text-white font-bold text-2xl tracking-wide">ELLE A DIT OUI !</span>
+              <div className="mb-8 p-6 bg-gradient-to-br from-[#2a0a12] to-black rounded-xl shadow-2xl shadow-rose-900/40 animate-bounce-slow flex flex-col items-center text-center border border-rose-gold relative overflow-hidden group transform hover:scale-105 transition-transform">
+                  
+                  {/* Effet Brillance Gold */}
+                  <div className="absolute top-0 -left-[100%] w-[50%] h-full bg-gradient-to-r from-transparent via-rose-gold/20 to-transparent transform -skew-x-25 group-hover:left-[200%] transition-all duration-1000 ease-in-out"></div>
+                  
+                  <div className="flex items-center gap-3 mb-2 relative z-10">
+                    <Crown className="w-8 h-8 text-rose-gold animate-pulse" fill="currentColor" />
+                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-rose-gold via-cream to-rose-gold font-script text-3xl font-bold tracking-wide drop-shadow-md">
+                        ELLE A DIT OUI !
+                    </span>
+                    <Crown className="w-8 h-8 text-rose-gold animate-pulse" fill="currentColor" />
                   </div>
-                  <p className="text-white/90 text-sm mb-4">
+                  
+                  <p className="text-rose-pale/80 text-sm mb-4 font-serif italic">
                     {answerReceived.name} a accepté votre invitation à l'instant.
                   </p>
                   
@@ -420,9 +408,9 @@ const Home = () => {
                   {monitoringToken && (
                        <button 
                          onClick={() => window.open(generatedLinks.spy, '_blank')}
-                         className="bg-white text-green-700 px-6 py-2 rounded-full font-bold text-sm shadow-lg hover:bg-green-50 transition-colors flex items-center gap-2"
+                         className="px-6 py-2 bg-rose-gold hover:bg-white text-ruby-dark rounded-full font-bold text-xs uppercase tracking-widest shadow-lg transition-colors flex items-center gap-2"
                        >
-                         <Eye size={16} /> Voir sa réaction
+                         <Eye size={14} /> Voir les détails
                        </button>
                   )}
               </div>
@@ -446,8 +434,8 @@ const Home = () => {
               </button>
             </div>
             <div className="mt-2 flex justify-center">
-                 <span className="flex items-center gap-1 text-[10px] text-green-400 bg-green-400/10 px-2 py-0.5 rounded-full border border-green-400/20">
-                    <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></div>
+                 <span className="flex items-center gap-1 text-[10px] text-rose-gold/60 bg-rose-gold/5 px-2 py-0.5 rounded-full border border-rose-gold/10">
+                    <div className="w-1.5 h-1.5 rounded-full bg-rose-gold animate-pulse"></div>
                     En attente de clic...
                  </span>
             </div>
@@ -487,7 +475,7 @@ const Home = () => {
               </div>
             </div>
           ) : (
-            // UPSELL si Plan Basic (Source 2 Logic)
+            // UPSELL si Plan Basic
              <div className="bg-gradient-to-br from-gray-900 to-black rounded-xl p-6 mb-8 border border-white/10 relative overflow-hidden">
                 <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-2 text-gray-400">
@@ -636,7 +624,6 @@ const Home = () => {
                     )}
                 </span>
             )}
-            {/* Gestion des états de chargement */}
             {status === 'processing' && <span className="flex items-center justify-center gap-3 animate-pulse">Création...</span>}
             {status === 'paying' && <span className="flex items-center justify-center gap-3"><CreditCard size={16} className="animate-bounce" /> Redirection...</span>}
             {status === 'verifying' && <span className="flex items-center justify-center gap-3"><Loader2 size={16} className="animate-spin" /> Validation Bancaire...</span>}
@@ -662,7 +649,7 @@ const Home = () => {
           <div className="bg-rose-gold/20 p-2 rounded-full"><TrendingUp size={16} className="text-rose-gold" /></div>
           <div>
             <p className="text-xs text-rose-pale font-bold">{activeNotif.name}</p>
-            <p className="text-[10px] text-cream/80">{activeNotif.action} <span className="opacity-50 mx-1">•</span> {activeNotif.time}</p>
+            <p className="text-xs text-cream/80">{activeNotif.action} <span className="opacity-50 mx-1">•</span> {activeNotif.time}</p>
           </div>
         </div>
       )}

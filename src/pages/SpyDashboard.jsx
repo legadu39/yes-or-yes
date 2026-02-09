@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
-// LIEN STRIPE UPSELL (1€)
+// LIEN STRIPE UPSELL (1€) - CORRECT
 const STRIPE_UPSELL_LINK = "https://buy.stripe.com/9B614ma3YexJ7X82Ft6Vq03";
 
 const SpyDashboard = () => {
@@ -204,10 +204,10 @@ const SpyDashboard = () => {
             {/* A. COLONNE GAUCHE (Status & Analyse) */}
             <div className="lg:col-span-4 space-y-6">
                 
-                {/* Carte STATUS */}
+                {/* Carte STATUS - COULEUR CORRIGÉE (LUXE) */}
                 <div className={`relative overflow-hidden rounded-3xl p-8 border backdrop-blur-xl transition-all duration-700 group
                     ${hasAnswered 
-                        ? 'bg-gradient-to-br from-emerald-900/40 to-black border-emerald-500/30 shadow-[0_0_40px_rgba(16,185,129,0.15)]' 
+                        ? 'bg-gradient-to-br from-emerald-950 via-green-900 to-black border-emerald-500/30 shadow-[0_0_40px_rgba(16,185,129,0.2)]' 
                         : isRejected 
                             ? 'bg-gradient-to-br from-red-950/40 to-black border-red-500/30'
                             : 'bg-gradient-to-br from-white/5 to-black/40 border-rose-gold/20'
@@ -222,7 +222,7 @@ const SpyDashboard = () => {
                         
                         <div className="text-4xl md:text-5xl font-script text-cream leading-tight mb-2">
                             {hasAnswered 
-                                ? <span className="text-emerald-300 drop-shadow-lg">Elle a dit Oui !</span>
+                                ? <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-200 via-emerald-100 to-gold drop-shadow-lg">Elle a dit Oui !</span>
                                 : isRejected 
                                     ? <span className="text-red-300">Refusé...</span>
                                     : "En Attente..."
@@ -325,7 +325,7 @@ const SpyDashboard = () => {
                          )}
                     </div>
 
-                    {/* 4. LE LOCK SCREEN (AVEC LE LIEN CORRIGÉ) */}
+                    {/* 4. LE LOCK SCREEN (AVEC LE LIEN CORRIGÉ ET TARGET BLANK) */}
                     {areDetailsLocked && (
                         <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/70 backdrop-blur-[6px]">
                             <div className="w-full max-w-sm mx-4 bg-[#1a0b12]/90 border border-rose-gold/30 p-8 rounded-2xl shadow-2xl relative">
@@ -340,7 +340,7 @@ const SpyDashboard = () => {
                                         L'accès aux adresses IP, heures exactes et détails des interactions est réservé au Rapport Complet.
                                     </p>
 
-                                    {/* LIEN DYNAMIQUE (Fix Redirection & Webhook) */}
+                                    {/* LIEN DYNAMIQUE (Fix Redirection & Webhook) - CIBLE OBLIGATOIRE */}
                                     <a 
                                        href={`${STRIPE_UPSELL_LINK}?client_reference_id=${id}`} 
                                        target="_blank" 

@@ -21,6 +21,100 @@ const STRIPE_LINKS = {
   spy: "https://buy.stripe.com/8x28wOcc6gFRfpAdk76Vq02"
 };
 
+// --- COMPOSANT DÉMO INTERNE (LA VRAIE LOGIQUE) ---
+const ValentineDemo = ({ onClose }) => {
+    const [noBtnPos, setNoBtnPos] = useState({ x: 0, y: 0 });
+    const [accepted, setAccepted] = useState(false);
+
+    const moveButton = () => {
+        const x = (Math.random() - 0.5) * 250;
+        const y = (Math.random() - 0.5) * 250;
+        setNoBtnPos({ x, y });
+    };
+
+    const handleYes = () => {
+        setAccepted(true);
+        const end = Date.now() + 1000;
+        const colors = ['#e11d48', '#fb7185', '#fff1f2'];
+        (function frame() {
+            confetti({ particleCount: 5, angle: 60, spread: 55, origin: { x: 0, y: 0.6 }, colors });
+            confetti({ particleCount: 5, angle: 120, spread: 55, origin: { x: 1, y: 0.6 }, colors });
+            if (Date.now() < end) requestAnimationFrame(frame);
+        }());
+    };
+
+    return (
+        <div className="flex-1 bg-ruby-dark relative overflow-hidden flex flex-col items-center justify-center p-6 w-full h-full">
+            <div className="absolute inset-0 pointer-events-none opacity-30 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]"></div>
+            
+            {/* CLOSE BTN */}
+            <button 
+                onClick={onClose}
+                className="absolute top-4 right-4 z-30 p-2 bg-black/50 rounded-full text-white/50 hover:text-white hover:bg-white/20 transition-all"
+            >
+                <X size={20} />
+            </button>
+
+            {accepted ? (
+                <div className="text-center animate-fade-in z-10">
+                    <div className="mb-6 inline-flex p-6 rounded-full bg-rose-gold/10 border border-rose-gold/30 text-rose-gold shadow-[0_0_30px_rgba(225,29,72,0.4)] animate-bounce-slow">
+                        <HeartHandshake size={48} />
+                    </div>
+                    <h2 className="text-4xl font-script text-cream mb-2">Elle a dit OUI !</h2>
+                    <p className="text-rose-pale/70 font-serif italic text-sm">
+                        (C'est ce que vous verrez quand elle cliquera)
+                    </p>
+                    <button onClick={onClose} className="mt-8 text-xs uppercase tracking-widest text-rose-gold border-b border-rose-gold/30 pb-1">
+                        Fermer la démo
+                    </button>
+                </div>
+            ) : (
+                <div className="text-center z-10 space-y-8 w-full max-w-xs">
+                    <div className="space-y-2">
+                        <p className="text-rose-gold/80 font-serif italic text-sm animate-pulse">Arthur vous pose une question...</p>
+                        <h2 className="text-4xl font-script text-cream leading-tight drop-shadow-lg">
+                            Léa,<br/>Veux-tu être ma Valentine ?
+                        </h2>
+                    </div>
+
+                    <div className="flex flex-col gap-4 w-full relative h-[150px] justify-center">
+                        {/* BOUTON OUI */}
+                        <button 
+                            onClick={handleYes}
+                            className="w-full py-4 bg-gradient-to-r from-rose-gold to-[#e8b594] text-ruby-dark font-bold uppercase tracking-[0.2em] rounded-xl shadow-lg hover:scale-105 transition-transform z-20"
+                        >
+                            OUI !
+                        </button>
+                        
+                        {/* BOUTON NON (FUYARD) */}
+                        <div className="absolute w-full flex justify-center pointer-events-none" style={{ top: '80px' }}>
+                            <button
+                                onMouseEnter={moveButton}
+                                onClick={moveButton} // Support tactile
+                                style={{
+                                    transform: `translate(${noBtnPos.x}px, ${noBtnPos.y}px)`,
+                                    transition: 'all 0.15s ease-out'
+                                }}
+                                className="pointer-events-auto px-8 py-3 border border-rose-gold/30 text-rose-gold/50 font-bold uppercase tracking-widest rounded-full text-xs flex items-center gap-2 hover:bg-rose-gold/5"
+                            >
+                                NON <MousePointer2 size={12} />
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <p className="text-[10px] text-white/20 mt-8">Essayez de cliquer sur NON...</p>
+                </div>
+            )}
+        </div>
+    );
+};
+
+// --- ICONE MANQUANTE ---
+const HeartHandshake = ({ size, className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/><path d="M12 5 9.04 7.96a2.17 2.17 0 0 0 0 3.08v0c.82.82 2.13.85 3 .07l2.07-1.9a2.82 2.82 0 0 1 3.18 0l2.94 2.69c.78.72.78 1.94 0 2.66"/><path d="M5.4 13.23a2.43 2.43 0 0 0 2.65 0l1.09-.99a2.43 2.43 0 0 1 3.26 0l3.77 3.49a2.43 2.43 0 0 1 0 3.49v0a2.43 2.43 0 0 1-3.49 0l-.8-.73a2.43 2.43 0 0 0-3.26 0l-4.7 4.3"/></svg>
+);
+
+
 const Home = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -36,22 +130,19 @@ const Home = () => {
   // --- ÉTATS GLOBAUX ---
   const [formData, setFormData] = useState({ sender: '', valentine: '', plan: 'spy' });
   const [generatedLinks, setGeneratedLinks] = useState(null);
-  // Status: idle | processing | paying | verifying | verifying_long | success | error
   const [status, setStatus] = useState('idle'); 
   const [activeNotif, setActiveNotif] = useState(null);
   const [copiedField, setCopiedField] = useState(null);
   const [mounted, setMounted] = useState(false);
   
-  // --- ÉTAT DÉMO (SIMULATION) ---
+  // --- ÉTAT DÉMO ---
   const [showDemo, setShowDemo] = useState(false);
-  const [demoNoBtnPos, setDemoNoBtnPos] = useState({ x: 0, y: 0 });
 
-  // --- ÉTATS INTELLIGENCE (LIVE MONITORING) ---
+  // --- ÉTATS INTELLIGENCE ---
   const [answerReceived, setAnswerReceived] = useState(null); 
   const pollingIntervalRef = useRef(null); 
   const [monitoringToken, setMonitoringToken] = useState(null); 
 
-  // --- INITIALISATION ---
   useEffect(() => setMounted(true), []);
 
   // 1. PERSISTANCE BROUILLON
@@ -66,72 +157,50 @@ const Home = () => {
     if (status === 'idle') saveDraft(formData);
   }, [formData, status, saveDraft]);
 
-  // --- UTILITAIRE MAJUSCULE AUTO ---
+  // --- UTILITAIRE MAJUSCULE ---
   const capitalize = (str) => {
       if (!str) return '';
       return str.charAt(0).toUpperCase() + str.slice(1);
   };
 
-  // --- LOGIQUE DÉMO (PIÈGE) ---
-  const moveDemoButton = (e) => {
-      // Calcul d'une position aléatoire pour la fuite
-      const x = (Math.random() - 0.5) * 200;
-      const y = (Math.random() - 0.5) * 200;
-      setDemoNoBtnPos({ x, y });
-  };
-
-  const triggerDemoConfetti = () => {
-      confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 }, colors: ['#e11d48', '#fb7185', '#fff1f2'] });
-  };
-
-  // 2. GESTION RETOUR PAIEMENT (STRATÉGIE FIL D'ARIANE + RÉCUPÉRATION ROBUSTE)
+  // 2. GESTION RETOUR PAIEMENT
   useEffect(() => {
-    // A. Récupération des paramètres URL
     const clientRef = searchParams.get('client_reference_id');
     const urlIdParam = searchParams.get('id');
     const paymentId = searchParams.get('payment_id');
     const fromStripe = searchParams.get('success') === 'true';
     const stateParam = searchParams.get('state');
 
-    // Est-ce qu'on revient potentiellement de Stripe ?
     const isReturningFromStripe = fromStripe || (paymentId && paymentId.startsWith('cs_'));
-
-    // B. STRATÉGIE "FIL D'ARIANE" (Le Sauveur d'Upsell)
     const pendingUpsell = sessionStorage.getItem('pending_upsell_context');
     
+    // Stratégie Fil d'Ariane
     if (isReturningFromStripe && pendingUpsell) {
         try {
             const context = JSON.parse(pendingUpsell);
             if (Date.now() - context.timestamp < 30 * 60 * 1000) {
-                console.log("🧵 Fil d'Ariane trouvé ! Restauration du contexte Upsell...");
                 sessionStorage.setItem(`spy_unlocked_${context.id}`, 'true');
                 sessionStorage.removeItem('pending_upsell_context'); 
-
-                console.log(`🔄 REDIRECTION FORCEE -> /spy/${context.id}`);
                 setTimeout(() => {
                     navigate(`/spy/${context.id}?token=${context.token}&success=true`);
                 }, 100);
                 return;
             }
-        } catch (e) { console.error("Erreur lecture fil d'ariane", e); }
+        } catch (e) { console.error(e); }
     }
 
-    // C. Algorithme standard de sélection de l'ID
     let urlId = null;
     if (clientRef) urlId = clientRef;
     else if (urlIdParam) urlId = urlIdParam;
     else if (paymentId && !paymentId.startsWith('cs_')) urlId = paymentId; 
 
     let recoveredToken = null;
-
-    // D. DÉTECTION "PIGGYBACK" (ID___TOKEN)
     if (urlId && urlId.includes('___')) {
         const parts = urlId.split('___');
         urlId = parts[0];       
         recoveredToken = parts[1]; 
     }
 
-    // E. Fallback State
     if (!urlId && stateParam) {
         try {
             const decoded = JSON.parse(atob(stateParam));
@@ -139,7 +208,6 @@ const Home = () => {
         } catch(e) {}
     }
 
-    // F. ROUTAGE
     if (urlId && !generatedLinks && (fromStripe || stateParam || recoveredToken)) {
         handlePaymentReturn(urlId, stateParam, recoveredToken);
     } 
@@ -147,15 +215,13 @@ const Home = () => {
         handleBackgroundCheck(urlId);
     }
     else if (isReturningFromStripe && !urlId && !generatedLinks) {
-       console.log("⚠️ Retour Stripe sans ID et sans mémoire.");
        restoreLastOrder();
     }
   }, [searchParams]);
 
-  // 3. INTELLIGENCE : SURVEILLANCE RÉPONSE
+  // 3. SURVEILLANCE RÉPONSE
   useEffect(() => {
     if (status !== 'success' || !generatedLinks || answerReceived) return;
-
     const currentId = generatedLinks.valentine.split('/').pop();
     if (!currentId || currentId.startsWith('cs_')) return; 
 
@@ -166,7 +232,6 @@ const Home = () => {
         try {
             checkCount++;
             const serverData = await getPublicInvitation(currentId);
-
             if (serverData && serverData.status === 'accepted') {
                 setAnswerReceived({
                     name: serverData.valentine || formData.valentine,
@@ -175,20 +240,13 @@ const Home = () => {
                 clearInterval(pollingIntervalRef.current);
             }
             if (checkCount >= MAX_CHECKS) clearInterval(pollingIntervalRef.current);
-        } catch (e) { console.warn("Silent polling error", e); }
+        } catch (e) {}
     };
 
     pollingIntervalRef.current = setInterval(checkLiveStatus, 5000);
-
-    const handleVisibilityChange = () => {
-        if (!document.hidden && !answerReceived) checkLiveStatus();
-    };
+    const handleVisibilityChange = () => { if (!document.hidden && !answerReceived) checkLiveStatus(); };
     document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    return () => {
-        if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
-        document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
+    return () => { if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current); document.removeEventListener('visibilitychange', handleVisibilityChange); };
   }, [status, generatedLinks, answerReceived]);
 
 
@@ -203,22 +261,18 @@ const Home = () => {
 
   const handleBackgroundCheck = async (urlId) => {
     if (!urlId || urlId.startsWith('cs_')) return; 
-
     const isPaid = await verifyPaymentStatus(urlId);
     if (isPaid) {
         const serverData = await getPublicInvitation(urlId);
         const owned = getOwnedInvitations();
         const foundLocal = owned.find(i => i.id === urlId);
-        
         const finalData = { ...foundLocal, ...serverData, id: urlId };
         displaySuccess(finalData, foundLocal?.token);
     }
   };
 
   const handlePaymentReturn = async (paymentId, stateParam, extraToken = null) => {
-    console.log("Traitement retour paiement pour:", paymentId);
     if (!paymentId || paymentId.startsWith('cs_')) return; 
-
     const owned = getOwnedInvitations();
     let foundToken = extraToken; 
     let recoveredData = null;
@@ -231,7 +285,7 @@ const Home = () => {
           recoveredData = { sender: decoded.s, valentine: decoded.v, plan: decoded.p };
           if (foundToken) repairLocalMemory(paymentId, foundToken, recoveredData);
         }
-      } catch (e) { console.error("Échec décodage state URL", e); }
+      } catch (e) {}
     }
 
     if (!foundToken) {
@@ -252,17 +306,11 @@ const Home = () => {
                 const realLocal = owned.find(i => i.id === serverData.id);
                 if (realLocal) foundToken = realLocal.token;
             }
-
             const displayPlan = targetPlan || serverData.plan;
 
             if (targetPlan && serverData.plan !== targetPlan) {
                 if (foundToken && targetPlan === 'spy') {
-                    const optimisticData = {
-                        id: serverData.id,
-                        sender: serverData.sender || "Vous",
-                        valentine: serverData.valentine || "...",
-                        plan: 'spy'
-                    };
+                    const optimisticData = { id: serverData.id, sender: serverData.sender || "Vous", valentine: serverData.valentine || "...", plan: 'spy' };
                     displaySuccess(optimisticData, foundToken);
                     waitForServerValidation(paymentId, null, stateParam, targetPlan, foundToken);
                     return; 
@@ -271,16 +319,9 @@ const Home = () => {
                 return;
             }
 
-            const finalInvite = {
-                id: serverData.id,
-                sender: serverData.sender || recoveredData?.sender || "Vous",
-                valentine: serverData.valentine || recoveredData?.valentine || "...",
-                plan: displayPlan
-            };
-
+            const finalInvite = { id: serverData.id, sender: serverData.sender || recoveredData?.sender || "Vous", valentine: serverData.valentine || recoveredData?.valentine || "...", plan: displayPlan };
             if (foundToken) repairLocalMemory(finalInvite.id, foundToken, finalInvite);
             if (tryUpsellRedirect(stateParam, foundToken, finalInvite)) return;
-
             displaySuccess(finalInvite, foundToken);
         } else {
             waitForServerValidation(paymentId, { ...recoveredData, id: paymentId }, stateParam, targetPlan, foundToken);
@@ -315,10 +356,7 @@ const Home = () => {
     const poll = async () => {
       attempt++;
       const serverData = await getPublicInvitation(paymentId);
-      
-      const isReady = serverData && 
-                      serverData.payment_status === 'paid' && 
-                      (!targetPlan || serverData.plan === targetPlan);
+      const isReady = serverData && serverData.payment_status === 'paid' && (!targetPlan || serverData.plan === targetPlan);
 
       if (isReady) {
         localStorage.removeItem('draft_invitation');
@@ -353,15 +391,9 @@ const Home = () => {
         valentine: invite.valentine || "...", 
         plan: invite.plan || 'spy' 
     });
-    
-    const showSpyLink = token ? true : false;
     setMonitoringToken(token);
     const safeId = invite.id.startsWith('cs_') ? (token ? 'ERREUR_ID' : invite.id) : invite.id;
-
-    setGeneratedLinks({
-      valentine: `${window.location.origin}/v/${safeId}`,
-      spy: showSpyLink ? `${window.location.origin}/spy/${safeId}?token=${token}` : null
-    });
+    setGeneratedLinks({ valentine: `${window.location.origin}/v/${safeId}`, spy: showSpyLink ? `${window.location.origin}/spy/${safeId}?token=${token}` : null });
     setStatus('success');
   };
 
@@ -377,57 +409,27 @@ const Home = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.sender.trim() || !formData.valentine.trim()) return;
-
     setStatus('processing');
-
     try {
-      const result = await createInvitation(
-        formData.sender.trim(),
-        formData.valentine.trim(),
-        formData.plan
-      );
-
+      const result = await createInvitation(formData.sender.trim(), formData.valentine.trim(), formData.plan);
       if (!result || !result.id) throw new Error("Erreur création");
-
       const { id, token } = result;
       setStatus('paying');
-
-      const statePayload = btoa(JSON.stringify({ 
-        t: token, id: id, s: formData.sender, v: formData.valentine, p: formData.plan 
-      }));
-      
+      const statePayload = btoa(JSON.stringify({ t: token, id: id, s: formData.sender, v: formData.valentine, p: formData.plan }));
       const returnUrl = encodeURIComponent(`${window.location.origin}?payment_id=${id}&success=true&state=${statePayload}`);
       const stripeUrl = (formData.plan === 'spy' || formData.plan === 'premium') ? STRIPE_LINKS.spy : STRIPE_LINKS.basic;
-      
       window.location.href = `${stripeUrl}?client_reference_id=${id}&redirect_url=${returnUrl}`;
-
-    } catch (error) {
-      console.error("Erreur handleSubmit:", error);
-      setStatus('error');
-      setTimeout(() => setStatus('idle'), 3000);
-    }
+    } catch (error) { setStatus('error'); setTimeout(() => setStatus('idle'), 3000); }
   };
 
   const handleShare = async (text, field) => {
     if (navigator.share && navigator.canShare) {
-      try {
-        await navigator.share({
-          title: 'YesOrYes',
-          text: field === 'valentine' ? "Pour toi..." : "Mon accès secret",
-          url: text
-        });
-        setCopiedField(field);
-      } catch (err) { copyToClipboard(text, field); }
+      try { await navigator.share({ title: 'YesOrYes', text: field === 'valentine' ? "Pour toi..." : "Mon accès secret", url: text }); setCopiedField(field); } catch (err) { copyToClipboard(text, field); }
     } else { copyToClipboard(text, field); }
     setTimeout(() => setCopiedField(null), 2000);
   };
+  const copyToClipboard = (text, field) => { navigator.clipboard.writeText(text); setCopiedField(field); };
 
-  const copyToClipboard = (text, field) => {
-    navigator.clipboard.writeText(text);
-    setCopiedField(field);
-  };
-
-  // Fake Notifs Logic
   useEffect(() => {
     const showNotification = () => {
       const randomNotif = FAKE_NOTIFICATIONS[Math.floor(Math.random() * FAKE_NOTIFICATIONS.length)];
@@ -715,47 +717,8 @@ const Home = () => {
                   {/* Phone Notch Mockup */}
                   <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-6 bg-black rounded-b-xl border-b border-x border-white/10 z-20"></div>
                   
-                  {/* CLOSE BTN */}
-                  <button 
-                    onClick={() => setShowDemo(false)}
-                    className="absolute top-4 right-4 z-30 p-2 bg-black/50 rounded-full text-white/50 hover:text-white hover:bg-white/20 transition-all"
-                  >
-                      <X size={20} />
-                  </button>
-
-                  <div className="flex-1 bg-ruby-dark relative overflow-hidden flex flex-col items-center justify-center p-6">
-                      <div className="absolute inset-0 pointer-events-none opacity-30 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]"></div>
-                      
-                      <div className="text-center z-10 space-y-8 w-full">
-                          <p className="text-rose-gold/80 font-serif italic text-sm">Arthur vous a envoyé ceci...</p>
-                          <h2 className="text-4xl font-script text-cream leading-tight">
-                              Léa,<br/>Veux-tu être ma Valentine ?
-                          </h2>
-
-                          <div className="flex flex-col gap-4 w-full px-4">
-                              <button 
-                                onClick={triggerDemoConfetti}
-                                className="w-full py-3 bg-rose-gold text-ruby-dark font-bold uppercase tracking-widest rounded-full shadow-lg hover:scale-105 transition-transform"
-                              >
-                                  OUI !
-                              </button>
-                              
-                              <div className="relative h-12">
-                                  <button
-                                    onMouseEnter={moveDemoButton}
-                                    onClick={moveDemoButton} // Pour mobile
-                                    style={{
-                                        transform: `translate(${demoNoBtnPos.x}px, ${demoNoBtnPos.y}px)`,
-                                        transition: 'all 0.2s ease-out'
-                                    }}
-                                    className="absolute left-0 right-0 py-3 border border-rose-gold/30 text-rose-gold/50 font-bold uppercase tracking-widest rounded-full text-xs flex items-center justify-center gap-2"
-                                  >
-                                      NON <MousePointer2 size={12} />
-                                  </button>
-                              </div>
-                          </div>
-                      </div>
-                  </div>
+                  {/* COMPOSANT DEMO INTERNE */}
+                  <ValentineDemo onClose={() => setShowDemo(false)} />
 
                   <div className="bg-black py-3 text-center border-t border-white/10">
                       <p className="text-[10px] text-white/30 uppercase tracking-widest">Simulateur - Vue de Léa</p>

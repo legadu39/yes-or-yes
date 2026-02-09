@@ -8,6 +8,9 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
+// LIEN STRIPE UPSELL (1€)
+const STRIPE_UPSELL_LINK = "https://buy.stripe.com/9B614ma3YexJ7X82Ft6Vq03";
+
 const SpyDashboard = () => {
   const { id } = useParams();
   const [searchParams] = useSearchParams();
@@ -177,7 +180,6 @@ const SpyDashboard = () => {
                         Dossier Confidentiel
                     </span>
                 </div>
-                {/* Seul endroit où on garde la police Script pour l'impact */}
                 <h1 className="text-6xl md:text-7xl font-script text-transparent bg-clip-text bg-gradient-to-r from-rose-pale via-cream to-rose-gold drop-shadow-md">
                     Rapport Cupidon
                 </h1>
@@ -218,7 +220,6 @@ const SpyDashboard = () => {
                         
                         <h2 className="text-xs font-serif text-rose-pale/50 uppercase tracking-[0.2em] mb-3">Statut de la Cible</h2>
                         
-                        {/* Titre Statut : Script utilisé ici car c'est un "Titre" émotionnel */}
                         <div className="text-4xl md:text-5xl font-script text-cream leading-tight mb-2">
                             {hasAnswered 
                                 ? <span className="text-emerald-300 drop-shadow-lg">Elle a dit Oui !</span>
@@ -281,7 +282,6 @@ const SpyDashboard = () => {
                     {/* Header Logs */}
                     <div className="px-8 py-6 border-b border-rose-gold/10 flex justify-between items-center bg-black/20">
                         <div>
-                            {/* Titre simple et propre */}
                             <h3 className="text-xl font-serif text-rose-pale mb-1 tracking-wide">Journal d'Activité</h3>
                             <p className="text-[10px] text-rose-gold/50 font-mono uppercase tracking-widest">Surveillance Temps Réel</p>
                         </div>
@@ -297,7 +297,6 @@ const SpyDashboard = () => {
                                  <p className="text-xs uppercase tracking-widest mt-2 opacity-50">Le système est en écoute</p>
                              </div>
                          ) : (
-                             // Si locked, on floute la liste
                              <div className={`space-y-3 transition-all duration-500 ${areDetailsLocked ? 'blur-[4px] opacity-30 select-none pointer-events-none' : ''}`}>
                                  {data.logs.slice().reverse().map((log, index) => (
                                     <div key={index} className="group flex items-center gap-5 p-4 rounded-xl bg-white/5 border border-transparent hover:border-rose-gold/20 hover:bg-white/10 transition-all">
@@ -326,30 +325,28 @@ const SpyDashboard = () => {
                          )}
                     </div>
 
-                    {/* 4. LE LOCK SCREEN (REVISITÉ - STYLE HOME) */}
+                    {/* 4. LE LOCK SCREEN (AVEC LE LIEN CORRIGÉ) */}
                     {areDetailsLocked && (
                         <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/70 backdrop-blur-[6px]">
-                            
-                            {/* La Carte Lock : Style sobre et sombre */}
                             <div className="w-full max-w-sm mx-4 bg-[#1a0b12]/90 border border-rose-gold/30 p-8 rounded-2xl shadow-2xl relative">
-                                
                                 <div className="flex flex-col items-center text-center">
                                     <div className="bg-rose-gold/10 p-4 rounded-full mb-4 border border-rose-gold/20">
                                         <LockKeyhole size={24} className="text-rose-gold" />
                                     </div>
-                                    
-                                    {/* Pas de police Script ici, mais du Serif Élégant */}
                                     <h3 className="text-xl font-serif text-cream mb-3">
                                         Données Verrouillées
                                     </h3>
-                                    
                                     <p className="text-xs text-rose-pale/70 font-sans mb-8 leading-relaxed px-4">
                                         L'accès aux adresses IP, heures exactes et détails des interactions est réservé au Rapport Complet.
                                     </p>
 
-                                    {/* LE BOUTON : Style Home (Gold/Bordeaux) */}
-                                    <a href="https://buy.stripe.com/9B614ma3YexJ7X82Ft6Vq03" target="_blank" rel="noreferrer" 
-                                       className="group w-full py-4 rounded-lg bg-rose-gold hover:bg-white text-ruby-dark text-xs font-bold uppercase tracking-[0.2em] shadow-lg transition-all flex items-center justify-center gap-3">
+                                    {/* LIEN DYNAMIQUE (Fix Redirection & Webhook) */}
+                                    <a 
+                                       href={`${STRIPE_UPSELL_LINK}?client_reference_id=${id}`} 
+                                       target="_blank" 
+                                       rel="noreferrer" 
+                                       className="group w-full py-4 rounded-lg bg-rose-gold hover:bg-white text-ruby-dark text-xs font-bold uppercase tracking-[0.2em] shadow-lg transition-all flex items-center justify-center gap-3"
+                                    >
                                         <span>Débloquer (1€)</span>
                                         <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform" />
                                     </a>

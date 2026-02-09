@@ -107,14 +107,10 @@ export default async function handler(req, res) {
         return res.status(404).json({ error: 'Invitation not found in DB' });
       }
 
-      if (current.payment_status === 'paid') {
-        console.log('ℹ️ Invitation déjà traitée (idempotence)');
-        return res.status(200).json({ received: true, status: 'already_paid' });
-      }
+      // Note: On enlève la vérification stricte "déjà payé" ici car l'upsell est un 2ème paiement sur la même invitation
+      // Si c'était 'paid' en 'basic', on veut pouvoir passer en 'paid' en 'spy'.
 
       // 6. INTELLIGENCE FINANCIÈRE : Correction automatique du Plan
-      // Si l'utilisateur a payé 2.50€ (250 cents), c'est qu'il a pris le pack Spy.
-      // On force la mise à jour du plan, peu importe ce qui était prévu initialement.
       const amountPaid = session.amount_total; // en cents
       
       const updateData = { 
@@ -123,8 +119,11 @@ export default async function handler(req, res) {
         updated_at: new Date().toISOString()
       };
 
-      if (amountPaid === 250) {
-          console.log(`✨ UPGRADE DÉTECTÉ : Paiement de 2.50€ reçu. Forçage du plan 'spy'.`);
+      // REGLE CRITIQUE : 
+      // 250 cents = Achat initial Pack Spy
+      // 100 cents = Upsell (Achat additionnel pour passer Spy)
+      if (amountPaid === 250 || amountPaid === 100) {
+          console.log(`✨ UPGRADE DÉTECTÉ (${amountPaid} cents). Passage au plan 'spy'.`);
           updateData.plan = 'spy';
       }
 
@@ -139,7 +138,7 @@ export default async function handler(req, res) {
         return res.status(500).json({ error: 'Database update failed', details: updateError.message });
       }
 
-      console.log(`✅ SUCCÈS : Invitation ${invitationId} marquée comme PAID (${updateData.plan || current.plan})`);
+      console.log(`✅ SUCCÈS : Invitation ${invitationId} mise à jour (Plan: ${updateData.plan || current.plan})`);
       return res.status(200).json({ received: true, status: 'updated_to_paid' });
 
     } catch (err) {

@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { supabase } from '../lib/supabaseClient';
-import { Shield, Clock, MousePointer2, CheckCircle2, HeartHandshake, LockKeyhole, Loader2, Ban, Eye, PartyPopper, Lock, Sparkles, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Shield, Clock, MousePointer2, CheckCircle2, HeartHandshake, LockKeyhole, Loader2, Ban, Eye, PartyPopper, Lock, Sparkles, AlertTriangle, RefreshCw, Heart } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 const SpyDashboard = () => {
@@ -23,12 +23,9 @@ const SpyDashboard = () => {
   const pageVisibleRef = useRef(true);
 
   // --- INTELLIGENCE : DÉTECTION DU PLAN & STATUT ---
-  // Le plan 'basic' bloque les détails (Logs, Carte), mais PAS le résultat final (Oui/Non)
   const isBasicPlan = data && data.plan === 'basic';
   const hasAnswered = data && data.status === 'accepted';
   const isRejected = data && data.status === 'rejected';
-
-  // Si c'est basic, on "lock" l'accès aux preuves détaillées, mais pas au dashboard global
   const areDetailsLocked = isBasicPlan; 
 
   // --- 1. CHARGEMENT & SMART POLLING ---
@@ -49,13 +46,12 @@ const SpyDashboard = () => {
       if (!result) {
         consecutiveErrors.current += 1;
         if (consecutiveErrors.current > 3) {
-            setAccessDenied(true); // Probablement token invalide après plusieurs essais
+            setAccessDenied(true);
         }
       } else {
         consecutiveErrors.current = 0;
         
-        // DÉTECTION DE CHANGEMENT D'ÉTAT (Preuve d'Intelligence)
-        // Si le statut passe de 'pending' à 'accepted' pendant qu'on regarde
+        // Trigger victoire si changement d'état
         if (prevDataRef.current && prevDataRef.current.status === 'pending' && result.status === 'accepted') {
             triggerVictory();
         }
@@ -76,23 +72,17 @@ const SpyDashboard = () => {
   // --- 2. CYCLE DE VIE & HEURISTIQUES ---
 
   useEffect(() => {
-    // Premier chargement
     fetchData();
 
-    // Configuration de la visibilité (Réveil Intelligent)
     const handleVisibilityChange = () => {
       pageVisibleRef.current = !document.hidden;
       if (!document.hidden) {
-        console.log("👁️ Utilisateur de retour : Rafraîchissement immédiat");
-        fetchData(true); // Refresh silencieux
+        fetchData(true);
       }
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    // Algorithme de Polling Adaptatif
-    // Si pas de réponse : Check toutes les 5s (pression haute)
-    // Si réponse obtenue : Check toutes les 60s (juste pour updates mineures)
     const intervalDuration = (data && data.status === 'pending') ? 5000 : 60000;
 
     pollingIntervalRef.current = setInterval(() => {
@@ -105,7 +95,7 @@ const SpyDashboard = () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
     };
-  }, [fetchData, data?.status]); // Recrée l'intervalle si le statut change
+  }, [fetchData, data?.status]);
 
   // --- 3. EFFETS VISUELS ---
 
@@ -119,14 +109,14 @@ const SpyDashboard = () => {
         angle: 60,
         spread: 55,
         origin: { x: 0 },
-        colors: ['#D24D57', '#E0B0B6', '#FFD700']
+        colors: ['#fb7185', '#f472b6', '#e11d48'] // Couleurs Roses/Rouges
       });
       confetti({
         particleCount: 5,
         angle: 120,
         spread: 55,
         origin: { x: 1 },
-        colors: ['#D24D57', '#E0B0B6', '#FFD700']
+        colors: ['#fb7185', '#f472b6', '#e11d48']
       });
 
       if (Date.now() < end) {
@@ -143,39 +133,10 @@ const SpyDashboard = () => {
     alert("Lien copié ! Envoyez-le à votre Valentine.");
   };
 
-  // --- RENDU ---
-
-  if (loading && !data) {
-    return (
-      <div className="min-h-screen bg-ruby-dark flex items-center justify-center text-rose-pale">
-        <div className="text-center">
-          <Loader2 className="animate-spin mx-auto mb-4 text-rose-gold" size={48} />
-          <p className="font-serif animate-pulse">Établissement de la liaison sécurisée...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (accessDenied) {
-    return (
-      <div className="min-h-screen bg-ruby-dark flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-black/40 border border-ruby-light/30 p-8 rounded-xl backdrop-blur-md text-center">
-          <Ban className="mx-auto text-ruby-light mb-4" size={64} />
-          <h1 className="text-2xl font-serif text-rose-pale mb-2">Accès Refusé</h1>
-          <p className="text-rose-pale/60 mb-6">Ce lien de surveillance est invalide ou a expiré.</p>
-          <button onClick={() => navigate('/')} className="px-6 py-2 bg-rose-gold text-ruby-dark font-bold rounded-full hover:bg-white transition-colors">
-            Retour à l'accueil
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // Calculs pour les KPIs
+  // KPI Calculations
   const totalViews = data?.logs?.filter(l => l.action === 'viewed').length || 0;
   const totalClicks = data?.logs?.filter(l => l.action.includes('click')).length || 0;
   
-  // Score d'intérêt (Heuristique simple)
   let interestScore = 0;
   if (data) {
       interestScore += totalViews * 10;
@@ -184,100 +145,120 @@ const SpyDashboard = () => {
       if (interestScore > 100) interestScore = 100;
   }
 
-  // Profil psychologique
   const getProfile = () => {
-      if (hasAnswered) return { title: "CONQUISE", desc: "Elle a succombé. Préparez votre soirée." };
-      if (isRejected) return { title: "CŒUR DE PIERRE", desc: "Mission échouée. On ne gagne pas à tous les coups." };
-      if (interestScore > 50) return { title: "INTÉRESSÉE", desc: "Elle hésite, revient, analyse... C'est bon signe." };
-      if (totalViews > 0) return { title: "CURIEUSE", desc: "Elle a ouvert, mais reste prudente." };
-      return { title: "EN ATTENTE", desc: "Aucune interaction détectée pour le moment." };
+      if (hasAnswered) return { title: "CONQUISE 💘", desc: "Elle a dit OUI ! Préparez le champagne !", color: "text-rose-600" };
+      if (isRejected) return { title: "DUR À CUIRE 💔", desc: "C'est un non... pour l'instant.", color: "text-gray-500" };
+      if (interestScore > 50) return { title: "INTÉRESSÉE 🤔", desc: "Elle hésite, elle revient... C'est bon signe.", color: "text-rose-400" };
+      if (totalViews > 0) return { title: "CURIEUSE 👀", desc: "Elle a ouvert l'enveloppe.", color: "text-blue-400" };
+      return { title: "EN ATTENTE ⏳", desc: "Le message n'a pas encore été ouvert.", color: "text-gray-400" };
   };
   const profile = getProfile();
 
+  // --- RENDU ---
+
+  if (loading && !data) {
+    return (
+      <div className="min-h-screen bg-pink-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="relative">
+            <Heart className="text-rose-400 animate-pulse mx-auto" size={64} fill="currentColor" />
+            <Loader2 className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-white animate-spin" size={24} />
+          </div>
+          <p className="mt-4 text-rose-800 font-serif text-lg">Connexion au cœur de la cible...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (accessDenied) {
+    return (
+      <div className="min-h-screen bg-pink-50 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white p-8 rounded-3xl shadow-xl text-center border border-pink-100">
+          <Ban className="mx-auto text-red-400 mb-4" size={64} />
+          <h1 className="text-2xl font-bold text-gray-800 mb-2">Lien Expiré</h1>
+          <p className="text-gray-500 mb-6">Ce rapport d'espionnage n'est plus accessible.</p>
+          <button onClick={() => navigate('/')} className="px-8 py-3 bg-rose-500 text-white font-bold rounded-full hover:bg-rose-600 transition-all shadow-lg hover:shadow-rose-300/50">
+            Retour à l'amour
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-fixed bg-cover bg-center relative font-sans text-rose-pale overflow-x-hidden"
-         style={{ backgroundImage: `url('https://images.unsplash.com/photo-1518199266791-5375a83190b7?q=80&w=2940&auto=format&fit=crop')` }}>
+    <div className="min-h-screen bg-pink-50 font-sans text-slate-700 pb-20">
       
-      {/* Overlay Sombre */}
-      <div className="absolute inset-0 bg-ruby-dark/90 backdrop-blur-sm"></div>
+      {/* Background Decor */}
+      <div className="fixed inset-0 pointer-events-none opacity-40" 
+           style={{ backgroundImage: 'radial-gradient(circle at 20% 20%, rgba(253, 164, 175, 0.3) 0%, transparent 40%), radial-gradient(circle at 80% 80%, rgba(244, 114, 182, 0.3) 0%, transparent 40%)' }}>
+      </div>
 
       <div className="relative z-10 container mx-auto px-4 py-8 max-w-5xl">
         
-        {/* Header de Statut */}
-        <header className="mb-8 flex flex-col md:flex-row justify-between items-center gap-4 border-b border-rose-gold/20 pb-6">
+        {/* Header */}
+        <header className="mb-10 text-center md:text-left flex flex-col md:flex-row justify-between items-center gap-4">
             <div>
-                <h1 className="text-3xl md:text-4xl font-serif text-transparent bg-clip-text bg-gradient-to-r from-rose-gold to-rose-pale mb-2">
-                    Rapport de Surveillance
+                <h1 className="text-3xl md:text-5xl font-bold text-gray-900 mb-2 font-serif">
+                    Rapport Secret 🕵️‍♂️
                 </h1>
-                <div className="flex items-center gap-2 text-sm text-rose-pale/60">
-                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border ${connectionStatus === 'connected' ? 'border-green-500/30 text-green-400 bg-green-500/10' : 'border-yellow-500/30 text-yellow-400 bg-yellow-500/10'}`}>
-                        <div className={`w-1.5 h-1.5 rounded-full ${connectionStatus === 'connected' ? 'bg-green-500 animate-pulse' : 'bg-yellow-500'}`}></div>
-                        {connectionStatus === 'connected' ? 'LIVE' : 'RECONNECTING'}
+                <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 text-sm text-gray-500">
+                    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold shadow-sm border ${connectionStatus === 'connected' ? 'bg-green-100 text-green-700 border-green-200' : 'bg-yellow-100 text-yellow-700 border-yellow-200'}`}>
+                        <div className={`w-2 h-2 rounded-full ${connectionStatus === 'connected' ? 'bg-green-500 animate-pulse' : 'bg-yellow-500'}`}></div>
+                        {connectionStatus === 'connected' ? 'EN LIGNE' : 'CONNEXION...'}
                     </span>
-                    <span className="hidden md:inline">• ID: {id}</span>
-                    <span>• MàJ: {lastRefreshed.toLocaleTimeString()}</span>
+                    <span>Dossier #{id.slice(0, 6)}</span>
                 </div>
             </div>
             
-            {/* Bouton Upgrade si Basic */}
+            {/* Bouton Upgrade (Si Basic) */}
             {isBasicPlan && (
                 <a href="https://buy.stripe.com/8x28wOcc6gFRfpAdk76Vq02" target="_blank" rel="noreferrer" 
-                   className="group flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-amber-600 to-yellow-600 rounded-lg font-bold text-white shadow-lg hover:scale-105 transition-transform">
+                   className="group flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-amber-400 to-orange-400 rounded-full font-bold text-white shadow-lg hover:shadow-orange-300/50 hover:scale-105 transition-all">
                     <LockKeyhole size={18} />
-                    <span>Débloquer Tout (1€)</span>
-                    <Sparkles size={16} className="group-hover:animate-spin" />
+                    <span>Tout voir (1€)</span>
                 </a>
             )}
         </header>
 
-        {/* --- ZONE PRINCIPALE : STATUT VITAL --- 
-            CETTE ZONE EST TOUJOURS VISIBLE, MÊME EN BASIC (Correction UX) 
-        */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            
-            {/* CARTE 1 : Statut Global */}
-            <div className={`col-span-1 md:col-span-3 p-6 rounded-2xl border backdrop-blur-md shadow-2xl transition-all duration-500
+        {/* STATUS VITAL (Toujours visible) */}
+        <div className="mb-8">
+            <div className={`relative overflow-hidden rounded-3xl p-8 border shadow-xl transition-all duration-500
                 ${hasAnswered 
-                    ? 'bg-gradient-to-br from-green-900/40 to-emerald-900/40 border-green-500/50 shadow-[0_0_30px_rgba(16,185,129,0.2)]' 
-                    : isRejected
-                        ? 'bg-gradient-to-br from-gray-900/80 to-black border-gray-600/50'
-                        : 'bg-black/40 border-rose-gold/20'
+                    ? 'bg-gradient-to-br from-rose-500 to-pink-600 text-white border-rose-400 shadow-rose-300/50' 
+                    : 'bg-white border-pink-100 shadow-lg'
                 }`}>
                 
-                <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+                {/* Confetti Decoration if Yes */}
+                {hasAnswered && <div className="absolute top-0 right-0 p-10 opacity-20"><Heart size={200} fill="currentColor" /></div>}
+
+                <div className="flex flex-col md:flex-row items-center justify-between gap-8 relative z-10">
                     <div className="flex items-center gap-6">
-                        <div className={`p-4 rounded-full border-2 ${hasAnswered ? 'border-green-400 bg-green-500/20 text-green-400' : 'border-rose-gold/30 bg-rose-gold/10 text-rose-gold'}`}>
+                        <div className={`p-5 rounded-full shadow-inner ${hasAnswered ? 'bg-white/20 text-white' : 'bg-pink-50 text-rose-500'}`}>
                             {hasAnswered ? <PartyPopper size={48} /> : isRejected ? <Ban size={48} /> : <Loader2 size={48} className="animate-spin-slow" />}
                         </div>
-                        <div>
-                            <h2 className="text-xl text-rose-pale/60 font-serif tracking-widest uppercase mb-1">Statut de la mission</h2>
-                            <div className="text-4xl md:text-5xl font-bold text-white font-serif">
+                        <div className="text-center md:text-left">
+                            <h2 className={`text-sm font-bold uppercase tracking-widest mb-1 ${hasAnswered ? 'text-rose-100' : 'text-gray-400'}`}>État actuel</h2>
+                            <div className={`text-3xl md:text-5xl font-black font-serif ${hasAnswered ? 'text-white' : 'text-gray-800'}`}>
                                 {hasAnswered 
-                                    ? <span className="text-transparent bg-clip-text bg-gradient-to-r from-green-300 to-emerald-500">ELLE A DIT OUI !</span>
+                                    ? "ELLE A DIT OUI ! 💖"
                                     : isRejected 
-                                        ? "REFUS CATÉGORIQUE"
+                                        ? "REFUSÉ 💔"
                                         : "EN ATTENTE..."
                                 }
                             </div>
-                            {hasAnswered && isBasicPlan && (
-                                <p className="mt-2 text-green-300/80 text-sm flex items-center gap-2">
-                                    <CheckCircle2 size={14} /> Réponse confirmée. Bravo soldat.
-                                </p>
-                            )}
                         </div>
                     </div>
                     
-                    {/* Lien à partager (Toujours accessible) */}
-                    <div className="w-full md:w-auto bg-black/50 p-4 rounded-lg border border-white/10 max-w-sm">
-                        <p className="text-xs text-rose-pale/50 uppercase tracking-widest mb-2 flex items-center gap-2">
-                            <Sparkles size={12} className="text-yellow-500" />
-                            Lien de la cible
+                    {/* Lien Partage */}
+                    <div className={`flex flex-col gap-2 w-full md:w-auto p-4 rounded-2xl ${hasAnswered ? 'bg-white/10 border border-white/20' : 'bg-gray-50 border border-gray-100'}`}>
+                        <p className={`text-xs uppercase font-bold flex items-center gap-2 ${hasAnswered ? 'text-rose-100' : 'text-gray-400'}`}>
+                            <Sparkles size={12} /> Lien Unique
                         </p>
                         <div className="flex gap-2">
-                            <code className="flex-1 bg-black/50 px-3 py-2 rounded text-sm text-rose-gold font-mono truncate border border-rose-gold/10">
+                            <code className={`flex-1 px-3 py-2 rounded-lg text-sm font-mono truncate ${hasAnswered ? 'bg-black/20 text-white' : 'bg-white text-gray-600 border border-gray-200'}`}>
                                 {`${window.location.origin}/v/${id}`}
                             </code>
-                            <button onClick={copyLink} className="p-2 hover:bg-rose-gold/20 rounded-md transition-colors text-rose-gold">
+                            <button onClick={copyLink} className={`p-2 rounded-lg transition-colors ${hasAnswered ? 'hover:bg-white/20 text-white' : 'hover:bg-pink-100 text-rose-500 bg-white shadow-sm'}`}>
                                 <RefreshCw size={18} />
                             </button>
                         </div>
@@ -288,41 +269,46 @@ const SpyDashboard = () => {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             
-            {/* COLONNE GAUCHE : Logs Détaillés */}
-            <div className="lg:col-span-2 space-y-6">
-                
-                {/* Section Logs - FLOUTÉE SI BASIC */}
-                <div className="relative group">
-                    <div className={`bg-black/30 border border-rose-gold/10 rounded-2xl p-6 backdrop-blur-sm overflow-hidden ${areDetailsLocked ? 'blur-sm select-none opacity-50' : ''}`}>
-                        <div className="flex items-center gap-3 mb-6">
-                            <Clock className="text-rose-gold" size={20} />
-                            <h3 className="text-xl font-serif">Journal d'Activité</h3>
+            {/* GAUCHE : Logs */}
+            <div className="lg:col-span-2">
+                <div className="relative group h-full">
+                    <div className={`bg-white/80 backdrop-blur-md border border-white/60 rounded-3xl p-6 shadow-xl h-full flex flex-col ${areDetailsLocked ? 'blur-[2px] opacity-60 pointer-events-none select-none' : ''}`}>
+                        <div className="flex items-center gap-3 mb-6 border-b border-gray-100 pb-4">
+                            <div className="bg-blue-100 p-2 rounded-lg text-blue-600">
+                                <Clock size={20} />
+                            </div>
+                            <h3 className="text-xl font-bold text-gray-800">Activité en direct</h3>
                         </div>
 
-                        <div className="space-y-4">
+                        <div className="space-y-3 flex-1 overflow-y-auto max-h-[500px] pr-2 scrollbar-hide">
                             {!data?.logs || data.logs.length === 0 ? (
-                                <div className="text-center py-8 text-rose-pale/30 italic border border-dashed border-rose-pale/10 rounded-lg">
-                                    Aucune activité détectée pour l'instant...
+                                <div className="text-center py-12 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+                                    <p className="text-gray-400">Rien à signaler pour le moment... 💤</p>
                                 </div>
                             ) : (
                                 data.logs.slice().reverse().map((log, index) => (
-                                    <div key={index} className="flex items-start gap-4 p-3 hover:bg-white/5 rounded-lg transition-colors border-l-2 border-rose-gold/20">
-                                        <div className="mt-1">
-                                            {log.action === 'viewed' && <Eye size={16} className="text-blue-400" />}
-                                            {log.action === 'clicked_yes' && <HeartHandshake size={16} className="text-green-400" />}
-                                            {log.action === 'clicked_no' && <Ban size={16} className="text-red-400" />}
-                                            {log.action.includes('music') && <Sparkles size={16} className="text-yellow-400" />}
+                                    <div key={index} className="flex items-center gap-4 p-4 bg-white border border-gray-50 shadow-sm rounded-2xl hover:shadow-md transition-shadow">
+                                        <div className="shrink-0">
+                                            {log.action === 'viewed' && <div className="p-2 bg-blue-50 text-blue-500 rounded-full"><Eye size={18} /></div>}
+                                            {log.action === 'clicked_yes' && <div className="p-2 bg-green-50 text-green-500 rounded-full"><HeartHandshake size={18} /></div>}
+                                            {log.action === 'clicked_no' && <div className="p-2 bg-red-50 text-red-500 rounded-full"><Ban size={18} /></div>}
+                                            {log.action.includes('music') && <div className="p-2 bg-yellow-50 text-yellow-500 rounded-full"><Sparkles size={18} /></div>}
                                         </div>
-                                        <div className="flex-1">
-                                            <p className="text-sm font-medium text-rose-pale">
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-semibold text-gray-700">
                                                 {log.action === 'viewed' && "A ouvert l'invitation"}
-                                                {log.action === 'clicked_yes' && "A cliqué sur OUI"}
-                                                {log.action === 'clicked_no' && "A essayé de fuir (Bouton Non)"}
-                                                {log.action === 'music_started' && "A activé la musique"}
+                                                {log.action === 'clicked_yes' && "A cliqué sur OUI !"}
+                                                {log.action === 'clicked_no' && "A hésité (Clic Non)"}
+                                                {log.action === 'music_started' && "Écoute la musique"}
                                             </p>
-                                            <p className="text-xs text-rose-pale/40 font-mono mt-1">
-                                                {new Date(log.timestamp).toLocaleString()} • IP: {log.ip || 'Masquée'}
-                                            </p>
+                                            <div className="flex items-center gap-3 mt-1">
+                                                <span className="text-xs text-gray-400 font-mono bg-gray-100 px-2 py-0.5 rounded">
+                                                    {new Date(log.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                                </span>
+                                                <span className="text-xs text-gray-400 truncate max-w-[100px]">
+                                                    IP: {log.ip || '???'}
+                                                </span>
+                                            </div>
                                         </div>
                                     </div>
                                 ))
@@ -330,18 +316,20 @@ const SpyDashboard = () => {
                         </div>
                     </div>
 
-                    {/* OVERLAY DE BLOCAGE (Si Basic) */}
+                    {/* LOCK OVERLAY */}
                     {areDetailsLocked && (
-                        <div className="absolute inset-0 flex flex-col items-center justify-center z-10">
-                            <div className="bg-black/80 border border-amber-500/30 p-8 rounded-2xl text-center shadow-2xl max-w-sm backdrop-blur-xl transform transition-transform hover:scale-105">
-                                <Lock className="mx-auto text-amber-500 mb-4" size={48} />
-                                <h3 className="text-xl font-bold text-white mb-2">Preuves Classifiées</h3>
-                                <p className="text-rose-pale/70 text-sm mb-6">
-                                    Vous avez le statut de la mission (OUI/NON), mais les détails techniques (Heures précises, IP, Tentatives de fuite) sont réservés aux agents SPY.
+                        <div className="absolute inset-0 flex flex-col items-center justify-center z-20 rounded-3xl overflow-hidden">
+                            <div className="bg-white/90 backdrop-blur-xl p-8 rounded-3xl text-center shadow-2xl max-w-sm border border-amber-100">
+                                <div className="bg-amber-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 text-amber-500">
+                                    <Lock size={32} />
+                                </div>
+                                <h3 className="text-xl font-bold text-gray-800 mb-2">Détails Privés</h3>
+                                <p className="text-gray-500 text-sm mb-6 leading-relaxed">
+                                    Pour voir l'heure exacte des clics et l'adresse IP de votre Valentine, passez au mode Espion Pro.
                                 </p>
                                 <a href="https://buy.stripe.com/8x28wOcc6gFRfpAdk76Vq02" target="_blank" rel="noreferrer" 
-                                   className="inline-block w-full py-3 bg-gradient-to-r from-amber-600 to-yellow-600 rounded-lg font-bold text-white shadow-lg hover:brightness-110 transition-all">
-                                    Débloquer pour 1€
+                                   className="block w-full py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl shadow-lg shadow-amber-200 transition-all transform hover:scale-105">
+                                    Débloquer (1€)
                                 </a>
                             </div>
                         </div>
@@ -349,70 +337,74 @@ const SpyDashboard = () => {
                 </div>
             </div>
 
-            {/* COLONNE DROITE : Analyse IA & Profil */}
+            {/* DROITE : Stats & Analyse */}
             <div className="space-y-6">
                 
-                {/* Carte Profil - FLOUTÉE SI BASIC */}
+                {/* Carte Analyse */}
                 <div className="relative">
-                    <div className={`bg-gradient-to-b from-ruby-light/10 to-black/40 border border-rose-gold/20 rounded-2xl p-6 ${areDetailsLocked ? 'blur-sm opacity-50' : ''}`}>
-                        <div className="flex items-center gap-3 mb-4">
-                            <Shield className="text-rose-gold" size={20} />
-                            <h3 className="text-lg font-serif">Analyse Tactique</h3>
+                    <div className={`bg-white/80 backdrop-blur-md border border-white/60 rounded-3xl p-6 shadow-xl ${areDetailsLocked ? 'blur-[2px] opacity-60' : ''}`}>
+                        <div className="flex items-center gap-3 mb-6 border-b border-gray-100 pb-4">
+                            <div className="bg-rose-100 p-2 rounded-lg text-rose-600">
+                                <Shield size={20} />
+                            </div>
+                            <h3 className="text-xl font-bold text-gray-800">IA de Cupidon</h3>
                         </div>
                         
                         <div className="space-y-6">
+                            {/* Jauge */}
                             <div>
-                                <div className="flex justify-between text-xs uppercase tracking-widest text-rose-pale/60 mb-2">
-                                    <span>Score d'Intérêt</span>
-                                    <span>{Math.round(interestScore)}%</span>
+                                <div className="flex justify-between text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">
+                                    <span>Niveau d'intérêt</span>
+                                    <span className="text-rose-500">{Math.round(interestScore)}%</span>
                                 </div>
-                                <div className="w-full bg-ruby-dark/80 h-2 rounded-full overflow-hidden border border-rose-gold/10">
-                                    <div className="h-full bg-gradient-to-r from-rose-gold to-ruby-light shadow-[0_0_10px_rgba(210,77,87,0.5)] transition-all duration-1000" style={{width: `${interestScore}%`}}></div>
+                                <div className="w-full bg-gray-100 h-3 rounded-full overflow-hidden">
+                                    <div className="h-full bg-gradient-to-r from-rose-300 to-rose-500 rounded-full transition-all duration-1000 ease-out" style={{width: `${interestScore}%`}}></div>
                                 </div>
                             </div>
                             
-                            <div className="border-l-2 border-ruby-light pl-4 py-2 bg-ruby-light/5 rounded-r-lg">
-                                <h4 className="text-rose-pale font-serif text-lg mb-1">{profile.title}</h4>
-                                <p className="text-sm text-cream/80 font-light italic leading-relaxed">
-                                    {profile.desc}
+                            <div className="bg-rose-50 rounded-xl p-4 border border-rose-100">
+                                <h4 className={`font-serif text-lg font-bold mb-1 ${profile.color}`}>{profile.title}</h4>
+                                <p className="text-sm text-gray-600 italic">
+                                    "{profile.desc}"
                                 </p>
                             </div>
 
-                            {/* Stats Grid */}
-                            <div className="grid grid-cols-2 gap-3 mt-4">
-                                <div className="bg-black/40 p-3 rounded-lg border border-white/5 text-center">
-                                    <div className="text-2xl font-bold text-white">{totalViews}</div>
-                                    <div className="text-[10px] uppercase text-rose-pale/40">Vues</div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm text-center">
+                                    <div className="text-2xl font-black text-gray-800">{totalViews}</div>
+                                    <div className="text-[10px] uppercase font-bold text-gray-400">Ouvertures</div>
                                 </div>
-                                <div className="bg-black/40 p-3 rounded-lg border border-white/5 text-center">
-                                    <div className="text-2xl font-bold text-white">{totalClicks}</div>
-                                    <div className="text-[10px] uppercase text-rose-pale/40">Clics</div>
+                                <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm text-center">
+                                    <div className="text-2xl font-black text-gray-800">{totalClicks}</div>
+                                    <div className="text-[10px] uppercase font-bold text-gray-400">Interactions</div>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    {/* OVERLAY (Si Basic) - Copie simplifiée pour ne pas surcharger */}
+                    {/* Blocage Stats (Si Basic) */}
                     {areDetailsLocked && (
-                        <div className="absolute inset-0 z-10 cursor-not-allowed" title="Contenu réservé aux membres Spy"></div>
+                        <div className="absolute inset-0 z-20 cursor-not-allowed"></div>
                     )}
                 </div>
 
-                {/* Section Support */}
-                <div className="bg-rose-gold/5 border border-rose-gold/10 rounded-xl p-4 text-center">
-                    <p className="text-xs text-rose-pale/60 mb-2">Un problème avec le rapport ?</p>
-                    <a href="mailto:support@yesoryes.com" className="text-xs text-rose-gold hover:underline">Contacter le QG</a>
+                {/* Support */}
+                <div className="bg-white/50 border border-white rounded-2xl p-4 text-center">
+                    <p className="text-xs text-gray-400 mb-1">Besoin d'aide ?</p>
+                    <a href="mailto:support@yesoryes.com" className="text-xs font-bold text-rose-500 hover:text-rose-600 hover:underline">
+                        Contacter l'Agence
+                    </a>
                 </div>
 
             </div>
         </div>
         
-         <footer className="mt-12 p-4 border-t border-rose-gold/10 text-center relative z-10">
+         <footer className="mt-12 text-center">
             <button 
                 onClick={() => navigate('/')}
-                className="text-rose-gold/60 hover:text-rose-gold text-xs uppercase tracking-[0.2em] transition-colors"
+                className="text-gray-400 hover:text-rose-500 text-xs font-bold uppercase tracking-[0.2em] transition-colors"
             >
-                Refermer le carnet
+                ← Fermer le dossier
             </button>
         </footer>
       </div>

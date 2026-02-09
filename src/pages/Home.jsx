@@ -42,14 +42,14 @@ const Home = () => {
   const [mounted, setMounted] = useState(false);
 
   // --- ÉTATS INTELLIGENCE (LIVE MONITORING) ---
-  const [answerReceived, setAnswerReceived] = useState(null); // Stocke la réponse si reçue en direct
-  const pollingIntervalRef = useRef(null); // Pour nettoyer le polling
-  const [monitoringToken, setMonitoringToken] = useState(null); // Token admin conservé en mémoire
+  const [answerReceived, setAnswerReceived] = useState(null); 
+  const pollingIntervalRef = useRef(null); 
+  const [monitoringToken, setMonitoringToken] = useState(null); 
 
   // --- INITIALISATION ---
   useEffect(() => setMounted(true), []);
 
-  // 1. PERSISTANCE BROUILLON (Anti-Amnésie)
+  // 1. PERSISTANCE BROUILLON
   useEffect(() => {
     if (status === 'idle') {
         const draft = recoverDraft();
@@ -61,71 +61,77 @@ const Home = () => {
     if (status === 'idle') saveDraft(formData);
   }, [formData, status, saveDraft]);
 
-  // 2. GESTION RETOUR PAIEMENT (Smart Recovery)
+  // 2. GESTION RETOUR PAIEMENT (Correction Priorité ID)
   useEffect(() => {
-    // Récupération intelligente de l'ID (supporte format composite pour l'upsell)
-    let urlId = searchParams.get('payment_id') || searchParams.get('id') || searchParams.get('client_reference_id');
+    // CORRECTION CRITIQUE : Priorité absolue à 'client_reference_id' qui contient notre UUID.
+    // On ignore 'payment_id' s'il commence par 'cs_' (Stripe Session) car ce n'est PAS notre ID DB.
+    const clientRef = searchParams.get('client_reference_id');
+    const urlIdParam = searchParams.get('id');
+    const paymentId = searchParams.get('payment_id');
+
+    // Algorithme de sélection de l'ID :
+    let urlId = null;
+    if (clientRef) urlId = clientRef;
+    else if (urlIdParam) urlId = urlIdParam;
+    else if (paymentId && !paymentId.startsWith('cs_')) urlId = paymentId; 
+
     const fromStripe = searchParams.get('success') === 'true';
     const stateParam = searchParams.get('state');
 
     let recoveredToken = null;
 
     // A. DÉTECTION "PIGGYBACK" (ID___TOKEN)
-    // C'est ici que la magie opère : on récupère le token caché dans l'ID
     if (urlId && urlId.includes('___')) {
         const parts = urlId.split('___');
-        urlId = parts[0];       // L'ID UUID propre
-        recoveredToken = parts[1]; // Le Token de sécurité
+        urlId = parts[0];       
+        recoveredToken = parts[1]; 
         console.log("🔓 Token de sécurité récupéré via URL composite");
     }
 
+    // Si on a toujours pas d'ID valide (cas rare où seul payment_id=cs_... est présent)
+    // On tente de regarder dans le state si disponible
+    if (!urlId && stateParam) {
+        try {
+            const decoded = JSON.parse(atob(stateParam));
+            if (decoded.id) urlId = decoded.id;
+        } catch(e) {}
+    }
+
     // B. ROUTAGE
-    // Cas A : Retour direct de Stripe (avec ou sans token récupéré)
     if (urlId && !generatedLinks && (fromStripe || stateParam || recoveredToken)) {
         handlePaymentReturn(urlId, stateParam, recoveredToken);
     } 
-    // Cas B : Rafraîchissement page ou lien direct sans params Stripe
     else if (urlId && !generatedLinks) {
         handleBackgroundCheck(urlId);
     }
-    // Cas C : Perte de contexte Stripe (Fallback)
     else if (fromStripe && !urlId && !generatedLinks) {
        console.log("⚠️ Retour Stripe sans ID explicite. Tentative de restauration heuristique.");
        restoreLastOrder();
     }
   }, [searchParams]);
 
-  // 3. INTELLIGENCE : SURVEILLANCE RÉPONSE (LIVE MONITORING)
-  // S'active uniquement quand le statut est SUCCESS
+  // 3. INTELLIGENCE : SURVEILLANCE RÉPONSE
   useEffect(() => {
     if (status !== 'success' || !generatedLinks || answerReceived) return;
 
-    // On extrait l'ID de l'URL générée ou du state local
     const currentId = generatedLinks.valentine.split('/').pop();
-    if (!currentId) return;
+    if (!currentId || currentId.startsWith('cs_')) return; // Sécurité anti-bug
 
     let checkCount = 0;
-    const MAX_CHECKS = 120; // 10 minutes de surveillance
+    const MAX_CHECKS = 120;
 
     const checkLiveStatus = async () => {
         try {
             checkCount++;
             const serverData = await getPublicInvitation(currentId);
 
-            // DÉTECTION VICTOIRE
             if (serverData && serverData.status === 'accepted') {
-                // 🎉 TRIGGER UI
                 setAnswerReceived({
                     name: serverData.valentine || formData.valentine,
                     timestamp: new Date()
                 });
-                
-                // 📳 HAPTIC FEEDBACK SUPPRIMÉ (Prévention crash mobile/Intervention error)
-                // if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 400]);
-
                 clearInterval(pollingIntervalRef.current);
             }
-
             if (checkCount >= MAX_CHECKS) clearInterval(pollingIntervalRef.current);
         } catch (e) {
             console.warn("Silent polling error", e);
@@ -134,12 +140,8 @@ const Home = () => {
 
     pollingIntervalRef.current = setInterval(checkLiveStatus, 5000);
 
-    // Visibility API : Vérifier immédiatement si l'utilisateur revient sur l'onglet
     const handleVisibilityChange = () => {
-        if (!document.hidden && !answerReceived) {
-            console.log("👀 Retour utilisateur -> Check immédiat");
-            checkLiveStatus();
-        }
+        if (!document.hidden && !answerReceived) checkLiveStatus();
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
@@ -154,48 +156,46 @@ const Home = () => {
 
   const preloadAssets = () => {
     if (window.hasPreloaded) return;
-    const audio = new Audio('/assets/music.ogg'); // Préchargement musique potentielle
+    const audio = new Audio('/assets/music.ogg'); 
     audio.load();
     window.hasPreloaded = true;
   };
 
-  // Restauration silencieuse (F5 sur page succès)
   const handleBackgroundCheck = async (urlId) => {
+    if (!urlId || urlId.startsWith('cs_')) return; // Protection
+
     const isPaid = await verifyPaymentStatus(urlId);
     if (isPaid) {
         const serverData = await getPublicInvitation(urlId);
         const owned = getOwnedInvitations();
         const foundLocal = owned.find(i => i.id === urlId);
         
-        // Fusion des données serveur et locales
         const finalData = { ...foundLocal, ...serverData, id: urlId };
         displaySuccess(finalData, foundLocal?.token);
     }
   };
 
-  // Traitement retour Stripe (avec support token externe)
   const handlePaymentReturn = async (paymentId, stateParam, extraToken = null) => {
     console.log("Traitement retour paiement pour:", paymentId);
-    
+    if (!paymentId || paymentId.startsWith('cs_')) return; // Protection ultime
+
     const owned = getOwnedInvitations();
-    let foundToken = extraToken; // Priorité 1 : Token récupéré via Piggyback (URL)
+    let foundToken = extraToken; 
     let recoveredData = null;
 
-    // 1. Décodage du State (Fallback si pas de token URL)
+    // 1. Décodage du State 
     if (stateParam) {
       try {
         const decoded = JSON.parse(atob(stateParam));
         if (decoded.t && decoded.id === paymentId) {
           if (!foundToken) foundToken = decoded.t;
           recoveredData = { sender: decoded.s, valentine: decoded.v, plan: decoded.p };
-          
-          // Sauvegarde immédiate si on a trouvé un token
           if (foundToken) repairLocalMemory(paymentId, foundToken, recoveredData);
         }
       } catch (e) { console.error("Échec décodage state URL", e); }
     }
 
-    // 2. Recherche locale (Dernier recours)
+    // 2. Recherche locale 
     if (!foundToken) {
         const foundLocal = owned.find(i => i.id === paymentId);
         if (foundLocal) {
@@ -208,22 +208,37 @@ const Home = () => {
     try {
         const serverData = await getPublicInvitation(paymentId);
         
-        // DÉTECTION UPSELL : Si pas de stateParam et qu'on était 'basic', on vise 'spy'
+        // DÉTECTION UPSELL : On force 'spy' si on revient d'un paiement sans state (upsell)
         const isUpsellReturn = !stateParam && recoveredData?.plan === 'basic';
-        // Si le serveur dit SPY, alors la cible est SPY, peu importe ce qu'on pensait avant
         const targetPlan = serverData?.plan === 'spy' ? 'spy' : (isUpsellReturn ? 'spy' : null);
 
         if (serverData && serverData.payment_status === 'paid') {
             
-            // Réconciliation ID (Stripe ID vs UUID)
             if (!foundToken) {
                 const realLocal = owned.find(i => i.id === serverData.id);
                 if (realLocal) foundToken = realLocal.token;
             }
 
-            // Polling si le plan n'est pas encore à jour
+            // Si on a payé mais que le plan n'est pas à jour, on force l'affichage Spy localement
+            // pour l'UX, tout en attendant la validation serveur
+            const displayPlan = targetPlan || serverData.plan;
+
             if (targetPlan && serverData.plan !== targetPlan) {
-                console.log("⏳ Paiement validé mais Plan pas encore à jour. Polling...");
+                console.log("⏳ Polling plan update...");
+                // On lance le polling mais on AFFICHE LE SUCCÈS IMMÉDIATEMENT si on a le token
+                if (foundToken && targetPlan === 'spy') {
+                    const optimisticData = {
+                        id: serverData.id,
+                        sender: serverData.sender || "Vous",
+                        valentine: serverData.valentine || "...",
+                        plan: 'spy' // Optimisme
+                    };
+                    displaySuccess(optimisticData, foundToken);
+                    // On laisse le polling tourner en fond pour confirmer
+                    waitForServerValidation(paymentId, null, stateParam, targetPlan, foundToken);
+                    return; 
+                }
+                
                 waitForServerValidation(paymentId, { ...recoveredData, id: paymentId }, stateParam, targetPlan, foundToken);
                 return;
             }
@@ -232,29 +247,22 @@ const Home = () => {
                 id: serverData.id,
                 sender: serverData.sender || recoveredData?.sender || "Vous",
                 valentine: serverData.valentine || recoveredData?.valentine || "...",
-                plan: serverData.plan 
+                plan: displayPlan
             };
 
             if (foundToken) repairLocalMemory(finalInvite.id, foundToken, finalInvite);
-
-            // Redirection Dashboard directe si Upsell réussi
             if (tryUpsellRedirect(stateParam, foundToken, finalInvite)) return;
 
             displaySuccess(finalInvite, foundToken);
         } else {
-            // Paiement pas encore propagé -> Polling
             waitForServerValidation(paymentId, { ...recoveredData, id: paymentId }, stateParam, targetPlan, foundToken);
         }
     } catch (e) {
-        waitForServerValidation(paymentId, recoveredData, stateParam, null, foundToken); // Fallback total
+        waitForServerValidation(paymentId, recoveredData, stateParam, null, foundToken); 
     }
   };
 
-  // NOUVEAU : Fonction helper pour vérifier la redirection Upsell
   const tryUpsellRedirect = (stateParam, token, invite) => {
-    // Si pas de paramètre 'state' (donc pas le flux de création initial)
-    // ET qu'on a le token (le user est propriétaire)
-    // ET que c'est le plan Spy (donc upsell réussi)
     if (!stateParam && token && invite.plan === 'spy') {
          console.log("🔄 Retour Upsell détecté -> Redirection Dashboard");
          navigate(`/spy/${invite.id}?token=${token}`);
@@ -266,13 +274,11 @@ const Home = () => {
   const repairLocalMemory = (id, token, data) => {
     if (!id || !token) return;
     const stored = localStorage.getItem('yesoryes_owned') ? JSON.parse(localStorage.getItem('yesoryes_owned')) : [];
-    // On nettoie les doublons
     const filtered = stored.filter(i => i.id !== id);
     const newEntry = { id, token, createdAt: new Date().toISOString(), ...data };
     localStorage.setItem('yesoryes_owned', JSON.stringify([newEntry, ...filtered]));
   };
 
-  // Polling adaptatif (Backoff)
   const waitForServerValidation = async (paymentId, contextData, stateParam = null, targetPlan = null, persistentToken = null) => {
     setStatus('verifying');
     let attempt = 0;
@@ -290,7 +296,6 @@ const Home = () => {
       if (isReady) {
         localStorage.removeItem('draft_invitation');
         
-        // On s'assure d'avoir le token
         let finalToken = persistentToken || contextData?.token;
         if (!finalToken) {
              const owned = getOwnedInvitations();
@@ -310,7 +315,6 @@ const Home = () => {
         setTimeout(poll, nextDelay);
       } else {
         setStatus('verifying_long');
-        // Timeout : on affiche le succès "best effort"
         if (serverData?.payment_status === 'paid') {
              const finalToken = persistentToken || contextData?.token;
              displaySuccess({ ...contextData, id: serverData.id, plan: serverData.plan }, finalToken);
@@ -323,21 +327,22 @@ const Home = () => {
   const displaySuccess = (invite, token) => {
     if (!invite) return;
     
-    // MISE A JOUR FORM DATA avec le plan réel du serveur
     setFormData({ 
         sender: invite.sender || "Vous", 
         valentine: invite.valentine || "...", 
         plan: invite.plan || 'spy' 
     });
     
-    // LE POINT CRITIQUE : Le lien espion n'est généré QUE si le token est présent
+    // Logique Link Generation
     const showSpyLink = token ? true : false;
     setMonitoringToken(token);
 
+    // CORRECTION : On s'assure que l'ID dans le lien est le bon (pas de cs_live)
+    const safeId = invite.id.startsWith('cs_') ? (token ? 'ERREUR_ID' : invite.id) : invite.id;
+
     setGeneratedLinks({
-      valentine: `${window.location.origin}/v/${invite.id}`,
-      // Si on a le token, on génère le lien Dashboard, sinon null (ce qui cause le blocage "Verrouillé")
-      spy: showSpyLink ? `${window.location.origin}/spy/${invite.id}?token=${token}` : null
+      valentine: `${window.location.origin}/v/${safeId}`,
+      spy: showSpyLink ? `${window.location.origin}/spy/${safeId}?token=${token}` : null
     });
     
     setStatus('success');
@@ -351,8 +356,6 @@ const Home = () => {
         setStatus('idle');
     }
   };
-
-  // --- ACTIONS UI ---
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -372,7 +375,6 @@ const Home = () => {
       const { id, token } = result;
       setStatus('paying');
 
-      // State Payload : On encode tout pour survivre au redirect Stripe
       const statePayload = btoa(JSON.stringify({ 
         t: token, id: id, s: formData.sender, v: formData.valentine, p: formData.plan 
       }));
@@ -380,7 +382,6 @@ const Home = () => {
       const returnUrl = encodeURIComponent(`${window.location.origin}?payment_id=${id}&success=true&state=${statePayload}`);
       const stripeUrl = (formData.plan === 'spy' || formData.plan === 'premium') ? STRIPE_LINKS.spy : STRIPE_LINKS.basic;
       
-      // PRODUCTION : Redirection Stripe
       window.location.href = `${stripeUrl}?client_reference_id=${id}&redirect_url=${returnUrl}`;
 
     } catch (error) {
@@ -423,12 +424,16 @@ const Home = () => {
 
   // --- RENDU ---
 
-  // VUE SUCCÈS
   if (status === 'success' && generatedLinks) {
+    // CORRECTION UPSELL LINK : On inclut le token dans le client_reference_id
+    // pour ne pas le perdre au retour de Stripe
+    const currentId = generatedLinks.valentine.split('/').pop();
+    const upsellRefId = monitoringToken ? `${currentId}___${monitoringToken}` : currentId;
+    const upsellSafeUrl = `${STRIPE_LINKS.spy}?client_reference_id=${upsellRefId}`;
+
     return (
       <div className="min-h-screen bg-ruby-dark flex flex-col items-center justify-center p-6 animate-fade-in relative z-10 overflow-hidden">
         
-        {/* Background Effects */}
         <div className="absolute inset-0 pointer-events-none">
            <div className="absolute top-[-10%] right-[-10%] w-[500px] h-[500px] bg-rose-gold/10 rounded-full blur-[120px] animate-pulse-slow"></div>
         </div>
@@ -444,14 +449,11 @@ const Home = () => {
           <h2 className="text-3xl font-script text-rose-pale mb-2">Invitation Prête</h2>
           <p className="text-rose-pale/60 mb-8">Le destin de {formData.valentine} est entre vos mains.</p>
 
-          {/* --- NOTIFICATION LIVE "ELLE A DIT OUI" (REDESIGN LUXE) --- */}
           {answerReceived && (
               <div className="mb-10 p-1 relative group transform hover:scale-105 transition-transform duration-500 animate-bounce-slow cursor-pointer">
-                  {/* Bordure brillante animée */}
                   <div className="absolute inset-0 bg-gradient-to-r from-rose-gold via-ruby-light to-rose-gold rounded-2xl blur opacity-75 group-hover:opacity-100 transition duration-1000 animate-pulse"></div>
                   
                   <div className="relative bg-ruby-dark border border-rose-gold/50 rounded-2xl p-6 flex flex-col items-center text-center shadow-2xl overflow-hidden">
-                      {/* Effet de brillance traversant */}
                       <div className="absolute top-0 -left-[100%] w-[50%] h-full bg-gradient-to-r from-transparent via-white/10 to-transparent transform -skew-x-25 animate-shine pointer-events-none"></div>
 
                       <div className="flex items-center justify-center gap-4 mb-3">
@@ -469,7 +471,6 @@ const Home = () => {
                           <span className="font-bold text-white">{answerReceived.name}</span> a accepté votre invitation à l'instant.
                       </p>
 
-                      {/* Bouton pour voir le détail si on a le token */}
                       {monitoringToken && (
                            <button 
                              onClick={() => window.location.href = generatedLinks.spy}
@@ -482,7 +483,6 @@ const Home = () => {
               </div>
           )}
 
-          {/* LIEN PUBLIC */}
           <div className="bg-ruby-dark/50 rounded-xl p-6 mb-6 border border-rose-gold/30">
             <h3 className="text-rose-gold font-serif mb-4 flex items-center justify-center gap-2">
               <Heart size={18} className="fill-rose-gold" />
@@ -507,7 +507,6 @@ const Home = () => {
             </div>
           </div>
 
-          {/* DASHBOARD ESPION (Différencié selon Plan) */}
           {generatedLinks.spy ? (
             <div className="bg-black/40 rounded-xl p-6 mb-8 border border-purple-500/30 relative overflow-hidden group">
               <div className="absolute top-0 right-0 bg-purple-500/20 px-3 py-1 rounded-bl-lg text-[10px] text-purple-300 uppercase tracking-widest font-bold border-l border-b border-purple-500/20">
@@ -541,7 +540,6 @@ const Home = () => {
               </div>
             </div>
           ) : (
-            // UPSELL si Plan Basic
              <div className="bg-gradient-to-br from-gray-900 to-black rounded-xl p-6 mb-8 border border-white/10 relative overflow-hidden">
                 <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-2 text-gray-400">
@@ -552,8 +550,10 @@ const Home = () => {
                 <p className="text-xs text-gray-500 mb-4">
                     Vous ne saurez pas combien de fois elle a hésité ou cliqué sur "NON".
                 </p>
+                
+                {/* UPSELL LINK CORRIGÉ : Inclut le token pour ne pas perdre l'identité au retour */}
                 <a
-                    href={`${STRIPE_LINKS.spy}?client_reference_id=${generatedLinks.valentine.split('/').pop()}`}
+                    href={upsellSafeUrl}
                     className="flex w-full items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-purple-900 to-purple-800 hover:brightness-110 text-purple-100 text-sm rounded-lg transition-all border border-purple-500/30 shadow-lg"
                 >
                     <Sparkles size={14} /> Débloquer le Carnet Secret (2.50€)
@@ -577,7 +577,6 @@ const Home = () => {
     );
   }
 
-  // VUE FORMULAIRE
   return (
     <div className={`min-h-screen bg-ruby-dark p-4 flex flex-col items-center justify-center relative overflow-x-hidden pt-16 ${mounted ? 'opacity-100' : 'opacity-0'} transition-opacity duration-1000`}>
       
@@ -642,7 +641,6 @@ const Home = () => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* PLAN BASIC */}
               <div 
                 onClick={() => status === 'idle' && setFormData({...formData, plan: 'basic'})}
                 className={`cursor-pointer p-6 rounded-xl border transition-all duration-300 flex flex-col justify-between h-full ${formData.plan === 'basic' ? 'bg-ruby-light/10 border-rose-gold shadow-rosegold' : 'bg-transparent border-rose-gold/20 hover:border-rose-gold/50'} ${status !== 'idle' ? 'opacity-50' : ''}`}
@@ -656,7 +654,6 @@ const Home = () => {
                 </div>
               </div>
 
-              {/* PLAN SPY */}
               <div 
                 onClick={() => status === 'idle' && setFormData({...formData, plan: 'spy'})}
                 className={`relative cursor-pointer rounded-xl border transition-all duration-300 overflow-hidden ${formData.plan === 'spy' ? 'bg-gradient-to-br from-ruby-DEFAULT/30 to-ruby-dark/30 border-rose-gold shadow-rosegold scale-105' : 'bg-transparent border-rose-gold/20 hover:border-rose-gold/50'} ${status !== 'idle' ? 'opacity-50' : ''}`}
@@ -699,7 +696,6 @@ const Home = () => {
         </form>
       </main>
 
-      {/* FOOTER & NOTIFS */}
       <footer className="mt-auto py-8 text-center relative z-10 w-full opacity-60 hover:opacity-100 transition-opacity">
         <div className="flex flex-wrap justify-center gap-4 md:gap-8 text-[10px] uppercase tracking-widest text-rose-gold/50 font-serif">
             <Link to="/legal/cgv" className="hover:text-rose-gold transition-colors">CGV</Link>

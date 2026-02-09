@@ -4,7 +4,7 @@ import { useApp } from '../context/AppContext';
 import { 
   Shield, Clock, MousePointer2, CheckCircle2, HeartHandshake, 
   LockKeyhole, Loader2, Ban, Eye, PartyPopper, Lock, Sparkles, 
-  RefreshCw, TrendingUp 
+  RefreshCw, TrendingUp, Gem 
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -25,7 +25,7 @@ const SpyDashboard = () => {
   const pollingIntervalRef = useRef(null);
   const pageVisibleRef = useRef(true);
 
-  // --- LOGIQUE MÉTIER (Intouchée) ---
+  // --- LOGIQUE MÉTIER ---
   const isBasicPlan = data && data.plan === 'basic';
   const hasAnswered = data && data.status === 'accepted';
   const isRejected = data && data.status === 'rejected';
@@ -96,7 +96,6 @@ const SpyDashboard = () => {
     if (!data) return;
     const link = `${window.location.origin}/v/${data.id}`;
     navigator.clipboard.writeText(link);
-    // Petit feedback visuel pourrait être ajouté ici
   };
 
   // KPIs et Profil
@@ -122,7 +121,6 @@ const SpyDashboard = () => {
 
   // --- RENDU DESIGN "RUBY DARK" ---
 
-  // Composant Loader dans le thème
   if (loading && !data) {
     return (
       <div className="min-h-screen bg-ruby-dark flex flex-col items-center justify-center p-6 relative overflow-hidden">
@@ -135,7 +133,6 @@ const SpyDashboard = () => {
     );
   }
 
-  // Composant Accès Refusé dans le thème
   if (accessDenied) {
     return (
       <div className="min-h-screen bg-ruby-dark flex items-center justify-center p-6">
@@ -143,7 +140,7 @@ const SpyDashboard = () => {
             <Ban className="mx-auto text-rose-gold mb-6" size={48} />
             <h1 className="text-3xl font-script text-rose-pale mb-2">Accès Interdit</h1>
             <p className="text-cream/60 font-serif mb-8">Ce dossier est classifié ou n'existe plus.</p>
-            <button onClick={() => navigate('/')} className="btn-ruby px-8 py-3 rounded-lg text-xs uppercase tracking-widest text-cream border border-rose-gold/50 hover:bg-rose-gold/10 transition-all">
+            <button onClick={() => navigate('/')} className="px-8 py-3 rounded-lg text-xs uppercase tracking-widest text-cream border border-rose-gold/50 hover:bg-rose-gold/10 transition-all font-bold">
                 Retour
             </button>
          </div>
@@ -175,8 +172,8 @@ const SpyDashboard = () => {
             </div>
 
             <div className="flex flex-col items-center md:items-end gap-2">
-                <div className={`flex items-center gap-2 px-3 py-1 rounded-full border ${connectionStatus === 'connected' ? 'border-green-900/50 bg-green-900/20 text-green-400' : 'border-amber-900/50 bg-amber-900/20 text-amber-400'}`}>
-                    <div className={`w-1.5 h-1.5 rounded-full ${connectionStatus === 'connected' ? 'bg-green-400 animate-pulse' : 'bg-amber-400'}`}></div>
+                <div className={`flex items-center gap-2 px-3 py-1 rounded-full border ${connectionStatus === 'connected' ? 'border-green-900/50 bg-green-900/20 text-green-400' : 'border-rose-gold/30 bg-rose-gold/10 text-rose-gold'}`}>
+                    <div className={`w-1.5 h-1.5 rounded-full ${connectionStatus === 'connected' ? 'bg-green-400 animate-pulse' : 'bg-rose-gold'}`}></div>
                     <span className="text-[10px] uppercase tracking-widest font-bold">{connectionStatus === 'connected' ? 'En Direct' : 'Connexion...'}</span>
                 </div>
                 <p className="text-[10px] text-rose-gold/50 font-mono">Dernière MàJ: {lastRefreshed.toLocaleTimeString()}</p>
@@ -227,7 +224,7 @@ const SpyDashboard = () => {
                 </code>
                 <button 
                     onClick={copyLink}
-                    className="w-full py-2 bg-rose-gold/10 hover:bg-rose-gold/20 text-rose-gold text-xs uppercase tracking-widest border border-rose-gold/30 rounded transition-all flex items-center justify-center gap-2"
+                    className="w-full py-2 bg-rose-gold/10 hover:bg-rose-gold/20 text-rose-gold text-xs uppercase tracking-widest border border-rose-gold/30 rounded transition-all flex items-center justify-center gap-2 font-bold"
                 >
                     <RefreshCw size={14} /> Copier le lien
                 </button>
@@ -245,11 +242,11 @@ const SpyDashboard = () => {
                             <Clock size={16} className="text-rose-gold" />
                             <span className="text-xs uppercase tracking-widest text-cream/80 font-serif">Mouchard d'Activité</span>
                         </div>
-                        {isBasicPlan && <Lock size={14} className="text-amber-500" />}
+                        {isBasicPlan && <Lock size={14} className="text-purple-400" />}
                     </div>
 
                     {/* Liste Logs */}
-                    <div className={`p-4 space-y-2 max-h-[500px] overflow-y-auto ${areDetailsLocked ? 'blur-sm opacity-40 select-none pointer-events-none' : ''}`}>
+                    <div className={`p-4 space-y-2 max-h-[500px] overflow-y-auto ${areDetailsLocked ? 'blur-sm opacity-30 select-none pointer-events-none' : ''}`}>
                          {!data?.logs || data.logs.length === 0 ? (
                              <div className="text-center py-10 text-rose-gold/30 italic font-serif">
                                  En attente de la première interaction...
@@ -280,18 +277,27 @@ const SpyDashboard = () => {
                          )}
                     </div>
 
-                    {/* LOCK SCREEN POUR BASIC PLAN */}
+                    {/* --- LOCK SCREEN CORRIGÉ (MYSTERY PURPLE) --- */}
                     {areDetailsLocked && (
-                        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/60 backdrop-blur-[2px]">
-                            <div className="bg-ruby-dark border border-amber-500/30 p-6 rounded-xl text-center shadow-2xl max-w-xs mx-4">
-                                <LockKeyhole className="mx-auto text-amber-500 mb-4 animate-pulse" size={32} />
-                                <h3 className="text-lg font-serif text-cream mb-2">Détails Classifiés</h3>
-                                <p className="text-xs text-rose-pale/60 mb-6 leading-relaxed">
-                                    Heures précises, adresses IP et tentatives de refus sont masquées en mode Basic.
+                        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/70 backdrop-blur-[4px]">
+                            <div className="bg-[#1a0510] border border-purple-500/30 p-8 rounded-2xl text-center shadow-[0_0_40px_rgba(147,51,234,0.2)] max-w-sm mx-4 transform hover:scale-105 transition-transform duration-500">
+                                
+                                <div className="bg-purple-900/20 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 border border-purple-500/20">
+                                    <Gem className="text-purple-400 animate-pulse" size={28} />
+                                </div>
+
+                                <h3 className="text-xl font-script text-white mb-2">Données Classifiées</h3>
+                                <p className="text-xs text-rose-pale/70 mb-6 leading-relaxed font-serif">
+                                    Débloquez le <strong>Mode Espion Pro</strong> pour révéler les heures exactes, les adresses IP et les hésitations.
                                 </p>
+                                
                                 <a href="https://buy.stripe.com/8x28wOcc6gFRfpAdk76Vq02" target="_blank" rel="noreferrer" 
-                                   className="block w-full py-3 bg-gradient-to-r from-amber-700 to-amber-600 hover:from-amber-600 hover:to-amber-500 text-cream text-xs font-bold uppercase tracking-widest rounded transition-all shadow-lg border border-amber-500/50">
-                                    Débloquer (1€)
+                                   className="group relative block w-full py-3.5 bg-gradient-to-r from-purple-700 to-pink-600 hover:from-purple-600 hover:to-pink-500 text-white text-xs font-bold uppercase tracking-widest rounded-lg transition-all shadow-lg shadow-purple-900/50 overflow-hidden">
+                                    <span className="relative z-10 flex items-center justify-center gap-2">
+                                        <LockKeyhole size={14} /> Débloquer (1€)
+                                    </span>
+                                    {/* Shine effect */}
+                                    <div className="absolute top-0 -left-full w-full h-full bg-gradient-to-r from-transparent via-white/20 to-transparent group-hover:left-full transition-all duration-700 ease-in-out"></div>
                                 </a>
                             </div>
                         </div>
@@ -340,7 +346,7 @@ const SpyDashboard = () => {
                         </div>
                     </div>
 
-                    {/* Blocage Stats si Basic */}
+                    {/* Blocage Stats si Basic (Invisible clickable overlay) */}
                     {areDetailsLocked && <div className="absolute inset-0 z-30 cursor-not-allowed"></div>}
                 </div>
 

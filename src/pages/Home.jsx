@@ -61,35 +61,66 @@ const Home = () => {
     if (status === 'idle') saveDraft(formData);
   }, [formData, status, saveDraft]);
 
-  // 2. GESTION RETOUR PAIEMENT (Correction Priorité ID)
+  // 2. GESTION RETOUR PAIEMENT (STRATÉGIE FIL D'ARIANE + RÉCUPÉRATION ROBUSTE)
   useEffect(() => {
-    // CORRECTION CRITIQUE : Priorité absolue à 'client_reference_id' qui contient notre UUID.
-    // On ignore 'payment_id' s'il commence par 'cs_' (Stripe Session) car ce n'est PAS notre ID DB.
+    // A. Récupération des paramètres URL
     const clientRef = searchParams.get('client_reference_id');
     const urlIdParam = searchParams.get('id');
     const paymentId = searchParams.get('payment_id');
-
-    // Algorithme de sélection de l'ID :
-    let urlId = null;
-    if (clientRef) urlId = clientRef;
-    else if (urlIdParam) urlId = urlIdParam;
-    else if (paymentId && !paymentId.startsWith('cs_')) urlId = paymentId; 
-
     const fromStripe = searchParams.get('success') === 'true';
     const stateParam = searchParams.get('state');
 
+    // Est-ce qu'on revient potentiellement de Stripe ?
+    // On est plus large : soit success=true, soit on a un payment_id (même cs_live)
+    const isReturningFromStripe = fromStripe || (paymentId && paymentId.startsWith('cs_'));
+
+    // B. STRATÉGIE "FIL D'ARIANE" (Le Sauveur d'Upsell)
+    // On vérifie si on a laissé un contexte en mémoire avant de partir
+    const pendingUpsell = sessionStorage.getItem('pending_upsell_context');
+    
+    // Si on revient de Stripe (peu importe les IDs bizarres) et qu'on a un contexte en attente
+    if (isReturningFromStripe && pendingUpsell) {
+        try {
+            const context = JSON.parse(pendingUpsell);
+            // Vérification de fraîcheur (< 30 min)
+            if (Date.now() - context.timestamp < 30 * 60 * 1000) {
+                console.log("🧵 Fil d'Ariane trouvé ! Restauration du contexte Upsell...");
+                
+                // On marque le succès localement pour SpyDashboard
+                sessionStorage.setItem(`spy_unlocked_${context.id}`, 'true');
+                sessionStorage.removeItem('pending_upsell_context'); // Nettoyage
+
+                // Redirection IMMÉDIATE vers le dashboard
+                console.log(`🔄 REDIRECTION FORCEE -> /spy/${context.id}`);
+                // Petit délai pour assurer que le storage est bien écrit
+                setTimeout(() => {
+                    navigate(`/spy/${context.id}?token=${context.token}&success=true`);
+                }, 100);
+                return;
+            }
+        } catch (e) {
+            console.error("Erreur lecture fil d'ariane", e);
+        }
+    }
+
+    // C. Algorithme standard de sélection de l'ID (si fil d'ariane échoue)
+    let urlId = null;
+    if (clientRef) urlId = clientRef;
+    else if (urlIdParam) urlId = urlIdParam;
+    
+    // Si on a que un payment_id et qu'il est propre (pas cs_), on le prend
+    else if (paymentId && !paymentId.startsWith('cs_')) urlId = paymentId; 
+
     let recoveredToken = null;
 
-    // A. DÉTECTION "PIGGYBACK" (ID___TOKEN)
+    // D. DÉTECTION "PIGGYBACK" (ID___TOKEN)
     if (urlId && urlId.includes('___')) {
         const parts = urlId.split('___');
         urlId = parts[0];       
         recoveredToken = parts[1]; 
-        console.log("🔓 Token de sécurité récupéré via URL composite");
     }
 
-    // Si on a toujours pas d'ID valide (cas rare où seul payment_id=cs_... est présent)
-    // On tente de regarder dans le state si disponible
+    // E. Fallback State
     if (!urlId && stateParam) {
         try {
             const decoded = JSON.parse(atob(stateParam));
@@ -97,15 +128,16 @@ const Home = () => {
         } catch(e) {}
     }
 
-    // B. ROUTAGE
+    // F. ROUTAGE
     if (urlId && !generatedLinks && (fromStripe || stateParam || recoveredToken)) {
         handlePaymentReturn(urlId, stateParam, recoveredToken);
     } 
     else if (urlId && !generatedLinks) {
         handleBackgroundCheck(urlId);
     }
-    else if (fromStripe && !urlId && !generatedLinks) {
-       console.log("⚠️ Retour Stripe sans ID explicite. Tentative de restauration heuristique.");
+    // Cas ultime : Retour Stripe mais aucun ID utilisable et pas de fil d'ariane
+    else if (isReturningFromStripe && !urlId && !generatedLinks) {
+       console.log("⚠️ Retour Stripe sans ID et sans mémoire.");
        restoreLastOrder();
     }
   }, [searchParams]);
@@ -115,7 +147,7 @@ const Home = () => {
     if (status !== 'success' || !generatedLinks || answerReceived) return;
 
     const currentId = generatedLinks.valentine.split('/').pop();
-    if (!currentId || currentId.startsWith('cs_')) return; // Sécurité anti-bug
+    if (!currentId || currentId.startsWith('cs_')) return; 
 
     let checkCount = 0;
     const MAX_CHECKS = 120;
@@ -162,7 +194,7 @@ const Home = () => {
   };
 
   const handleBackgroundCheck = async (urlId) => {
-    if (!urlId || urlId.startsWith('cs_')) return; // Protection
+    if (!urlId || urlId.startsWith('cs_')) return; 
 
     const isPaid = await verifyPaymentStatus(urlId);
     if (isPaid) {
@@ -177,13 +209,12 @@ const Home = () => {
 
   const handlePaymentReturn = async (paymentId, stateParam, extraToken = null) => {
     console.log("Traitement retour paiement pour:", paymentId);
-    if (!paymentId || paymentId.startsWith('cs_')) return; // Protection ultime
+    if (!paymentId || paymentId.startsWith('cs_')) return; 
 
     const owned = getOwnedInvitations();
     let foundToken = extraToken; 
     let recoveredData = null;
 
-    // 1. Décodage du State 
     if (stateParam) {
       try {
         const decoded = JSON.parse(atob(stateParam));
@@ -195,7 +226,6 @@ const Home = () => {
       } catch (e) { console.error("Échec décodage state URL", e); }
     }
 
-    // 2. Recherche locale 
     if (!foundToken) {
         const foundLocal = owned.find(i => i.id === paymentId);
         if (foundLocal) {
@@ -204,11 +234,9 @@ const Home = () => {
         }
     }
 
-    // 3. Vérité Serveur
     try {
         const serverData = await getPublicInvitation(paymentId);
         
-        // DÉTECTION UPSELL : On force 'spy' si on revient d'un paiement sans state (upsell)
         const isUpsellReturn = !stateParam && recoveredData?.plan === 'basic';
         const targetPlan = serverData?.plan === 'spy' ? 'spy' : (isUpsellReturn ? 'spy' : null);
 
@@ -219,22 +247,18 @@ const Home = () => {
                 if (realLocal) foundToken = realLocal.token;
             }
 
-            // Si on a payé mais que le plan n'est pas à jour, on force l'affichage Spy localement
-            // pour l'UX, tout en attendant la validation serveur
             const displayPlan = targetPlan || serverData.plan;
 
             if (targetPlan && serverData.plan !== targetPlan) {
                 console.log("⏳ Polling plan update...");
-                // On lance le polling mais on AFFICHE LE SUCCÈS IMMÉDIATEMENT si on a le token
                 if (foundToken && targetPlan === 'spy') {
                     const optimisticData = {
                         id: serverData.id,
                         sender: serverData.sender || "Vous",
                         valentine: serverData.valentine || "...",
-                        plan: 'spy' // Optimisme
+                        plan: 'spy'
                     };
                     displaySuccess(optimisticData, foundToken);
-                    // On laisse le polling tourner en fond pour confirmer
                     waitForServerValidation(paymentId, null, stateParam, targetPlan, foundToken);
                     return; 
                 }
@@ -333,7 +357,6 @@ const Home = () => {
         plan: invite.plan || 'spy' 
     });
     
-    // Logique Link Generation
     const showSpyLink = token ? true : false;
     setMonitoringToken(token);
 
@@ -425,8 +448,6 @@ const Home = () => {
   // --- RENDU ---
 
   if (status === 'success' && generatedLinks) {
-    // CORRECTION UPSELL LINK : On inclut le token dans le client_reference_id
-    // pour ne pas le perdre au retour de Stripe
     const currentId = generatedLinks.valentine.split('/').pop();
     const upsellRefId = monitoringToken ? `${currentId}___${monitoringToken}` : currentId;
     const upsellSafeUrl = `${STRIPE_LINKS.spy}?client_reference_id=${upsellRefId}`;
@@ -551,7 +572,6 @@ const Home = () => {
                     Vous ne saurez pas combien de fois elle a hésité ou cliqué sur "NON".
                 </p>
                 
-                {/* UPSELL LINK CORRIGÉ : Inclut le token pour ne pas perdre l'identité au retour */}
                 <a
                     href={upsellSafeUrl}
                     className="flex w-full items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-purple-900 to-purple-800 hover:brightness-110 text-purple-100 text-sm rounded-lg transition-all border border-purple-500/30 shadow-lg"

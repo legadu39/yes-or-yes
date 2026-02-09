@@ -34,17 +34,23 @@ const SpyDashboard = () => {
   const isRejected = data && data.status === 'rejected';
   const areDetailsLocked = isBasicPlan; 
 
+  // --- INTELLIGENCE SÉCURITÉ : PRÉPARATION DU LIEN UPSELL ---
+  // On attache le token à l'ID pour qu'il survive à l'aller-retour Stripe
+  const token = searchParams.get('token');
+  const compositeId = token ? `${id}___${token}` : id;
+  const upsellUrl = `${STRIPE_UPSELL_LINK}?client_reference_id=${compositeId}`;
+
   const fetchData = useCallback(async (isBackgroundRefresh = false) => {
     try {
-      const token = searchParams.get('token');
-      if (!token) {
+      const currentToken = searchParams.get('token');
+      if (!currentToken) {
           setAccessDenied(true);
           setLoading(false);
           return;
       }
       if (!isBackgroundRefresh) setLoading(true);
 
-      const result = await getSpyReport(id, token);
+      const result = await getSpyReport(id, currentToken);
 
       if (!result) {
         consecutiveErrors.current += 1;
@@ -362,9 +368,9 @@ const SpyDashboard = () => {
                                         L'accès aux adresses IP, heures exactes et détails des interactions est réservé au Rapport Complet.
                                     </p>
 
-                                    {/* LIEN SIMPLE SANS TARGET BLANK NI POLLING */}
+                                    {/* MODIFICATION : Lien utilisant upsellUrl sécurisé */}
                                     <a 
-                                       href={`${STRIPE_UPSELL_LINK}?client_reference_id=${id}`} 
+                                       href={upsellUrl} 
                                        className="group w-full py-4 rounded-lg bg-rose-gold hover:bg-white text-ruby-dark text-xs font-bold uppercase tracking-[0.2em] shadow-lg transition-all flex items-center justify-center gap-3 cursor-pointer"
                                     >
                                         <span>Débloquer (1€)</span>

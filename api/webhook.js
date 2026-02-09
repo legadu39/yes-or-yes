@@ -79,15 +79,17 @@ export default async function handler(req, res) {
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object;
     
-    // Récupération robuste de l'ID
-    const invitationId = session.client_reference_id || session.metadata?.invitationId;
+    // Récupération robuste de l'ID (Support du format composite ID___TOKEN)
+    // On nettoie l'ID pour ne garder que la partie UUID avant le séparateur "___"
+    let rawId = session.client_reference_id || session.metadata?.invitationId;
+    const invitationId = rawId ? rawId.split('___')[0] : null;
 
     if (!invitationId) {
       console.error('❌ Aucun invitationId trouvé dans la session Stripe:', session.id);
       return res.status(200).json({ received: true, warning: 'No invitation ID found' });
     }
 
-    console.log(`💰 Paiement validé pour invitation: ${invitationId}`);
+    console.log(`💰 Paiement validé pour invitation: ${invitationId} (Raw: ${rawId})`);
 
     try {
       // 5. Vérification d'idempotence

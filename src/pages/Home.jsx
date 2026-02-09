@@ -63,13 +63,24 @@ const Home = () => {
 
   // 2. GESTION RETOUR PAIEMENT (Smart Recovery)
   useEffect(() => {
-    const urlId = searchParams.get('payment_id') || searchParams.get('id') || searchParams.get('client_reference_id');
+    // Récupération intelligente de l'ID (supporte format composite pour l'upsell)
+    let urlId = searchParams.get('payment_id') || searchParams.get('id') || searchParams.get('client_reference_id');
     const fromStripe = searchParams.get('success') === 'true';
     const stateParam = searchParams.get('state');
 
+    let recoveredToken = null;
+
+    // Détection et Extraction du Token Composite (Méthode Piggyback)
+    if (urlId && urlId.includes('___')) {
+        const parts = urlId.split('___');
+        urlId = parts[0];       // L'ID UUID propre
+        recoveredToken = parts[1]; // Le Token récupéré
+        console.log("🔓 Token de sécurité récupéré via URL composite");
+    }
+
     // Cas A : Retour direct de Stripe
     if (urlId && !generatedLinks && (fromStripe || stateParam)) {
-        handlePaymentReturn(urlId, stateParam);
+        handlePaymentReturn(urlId, stateParam, recoveredToken);
     } 
     // Cas B : Rafraîchissement page ou lien direct sans params Stripe
     else if (urlId && !generatedLinks) {
@@ -160,12 +171,12 @@ const Home = () => {
     }
   };
 
-  // Traitement retour Stripe (avec décodage State)
-  const handlePaymentReturn = async (paymentId, stateParam) => {
+  // Traitement retour Stripe (avec support token externe)
+  const handlePaymentReturn = async (paymentId, stateParam, extraToken = null) => {
     console.log("Traitement retour paiement pour:", paymentId);
     
     const owned = getOwnedInvitations();
-    let foundToken = null;
+    let foundToken = extraToken; // Priorité au token récupéré via Piggyback
     let recoveredData = null;
 
     // 1. Décodage du State (si présent) pour récupérer Token & Plan
@@ -173,7 +184,7 @@ const Home = () => {
       try {
         const decoded = JSON.parse(atob(stateParam));
         if (decoded.t && decoded.id === paymentId) {
-          foundToken = decoded.t;
+          if (!foundToken) foundToken = decoded.t;
           recoveredData = { sender: decoded.s, valentine: decoded.v, plan: decoded.p };
           repairLocalMemory(paymentId, foundToken, recoveredData);
         }
@@ -218,7 +229,7 @@ const Home = () => {
                 plan: serverData.plan 
             };
 
-            repairLocalMemory(finalInvite.id, foundToken, finalInvite);
+            if (foundToken) repairLocalMemory(finalInvite.id, foundToken, finalInvite);
 
             // TENTATIVE REDIRECTION UPSELL IMMÉDIATE
             if (tryUpsellRedirect(stateParam, foundToken, finalInvite)) return;

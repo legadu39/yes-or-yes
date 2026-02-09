@@ -70,16 +70,18 @@ const Home = () => {
 
     let recoveredToken = null;
 
-    // Détection et Extraction du Token Composite (Méthode Piggyback)
+    // A. DÉTECTION "PIGGYBACK" (ID___TOKEN)
+    // C'est ici que la magie opère : on récupère le token caché dans l'ID
     if (urlId && urlId.includes('___')) {
         const parts = urlId.split('___');
         urlId = parts[0];       // L'ID UUID propre
-        recoveredToken = parts[1]; // Le Token récupéré
+        recoveredToken = parts[1]; // Le Token de sécurité
         console.log("🔓 Token de sécurité récupéré via URL composite");
     }
 
-    // Cas A : Retour direct de Stripe
-    if (urlId && !generatedLinks && (fromStripe || stateParam)) {
+    // B. ROUTAGE
+    // Cas A : Retour direct de Stripe (avec ou sans token récupéré)
+    if (urlId && !generatedLinks && (fromStripe || stateParam || recoveredToken)) {
         handlePaymentReturn(urlId, stateParam, recoveredToken);
     } 
     // Cas B : Rafraîchissement page ou lien direct sans params Stripe
@@ -176,22 +178,24 @@ const Home = () => {
     console.log("Traitement retour paiement pour:", paymentId);
     
     const owned = getOwnedInvitations();
-    let foundToken = extraToken; // Priorité au token récupéré via Piggyback
+    let foundToken = extraToken; // Priorité 1 : Token récupéré via Piggyback (URL)
     let recoveredData = null;
 
-    // 1. Décodage du State (si présent) pour récupérer Token & Plan
+    // 1. Décodage du State (Fallback si pas de token URL)
     if (stateParam) {
       try {
         const decoded = JSON.parse(atob(stateParam));
         if (decoded.t && decoded.id === paymentId) {
           if (!foundToken) foundToken = decoded.t;
           recoveredData = { sender: decoded.s, valentine: decoded.v, plan: decoded.p };
-          repairLocalMemory(paymentId, foundToken, recoveredData);
+          
+          // Sauvegarde immédiate si on a trouvé un token
+          if (foundToken) repairLocalMemory(paymentId, foundToken, recoveredData);
         }
       } catch (e) { console.error("Échec décodage state URL", e); }
     }
 
-    // 2. Recherche locale (Fallback)
+    // 2. Recherche locale (Dernier recours)
     if (!foundToken) {
         const foundLocal = owned.find(i => i.id === paymentId);
         if (foundLocal) {
@@ -206,19 +210,21 @@ const Home = () => {
         
         // DÉTECTION UPSELL : Si pas de stateParam et qu'on était 'basic', on vise 'spy'
         const isUpsellReturn = !stateParam && recoveredData?.plan === 'basic';
-        const targetPlan = isUpsellReturn ? 'spy' : null;
+        // Si le serveur dit SPY, alors la cible est SPY, peu importe ce qu'on pensait avant
+        const targetPlan = serverData?.plan === 'spy' ? 'spy' : (isUpsellReturn ? 'spy' : null);
 
         if (serverData && serverData.payment_status === 'paid') {
-            // Fix ID reconciliation (Stripe ID vs UUID)
+            
+            // Réconciliation ID (Stripe ID vs UUID)
             if (!foundToken) {
                 const realLocal = owned.find(i => i.id === serverData.id);
                 if (realLocal) foundToken = realLocal.token;
             }
 
-            // CRITIQUE : Si c'est un upsell, on attend que le plan devienne 'spy'
+            // Polling si le plan n'est pas encore à jour
             if (targetPlan && serverData.plan !== targetPlan) {
                 console.log("⏳ Paiement validé mais Plan pas encore à jour. Polling...");
-                waitForServerValidation(paymentId, { ...recoveredData, id: paymentId }, stateParam, targetPlan);
+                waitForServerValidation(paymentId, { ...recoveredData, id: paymentId }, stateParam, targetPlan, foundToken);
                 return;
             }
 
@@ -231,16 +237,16 @@ const Home = () => {
 
             if (foundToken) repairLocalMemory(finalInvite.id, foundToken, finalInvite);
 
-            // TENTATIVE REDIRECTION UPSELL IMMÉDIATE
+            // Redirection Dashboard directe si Upsell réussi
             if (tryUpsellRedirect(stateParam, foundToken, finalInvite)) return;
 
             displaySuccess(finalInvite, foundToken);
         } else {
             // Paiement pas encore propagé -> Polling
-            waitForServerValidation(paymentId, { ...recoveredData, id: paymentId }, stateParam, targetPlan);
+            waitForServerValidation(paymentId, { ...recoveredData, id: paymentId }, stateParam, targetPlan, foundToken);
         }
     } catch (e) {
-        waitForServerValidation(paymentId, recoveredData, stateParam); // Fallback total
+        waitForServerValidation(paymentId, recoveredData, stateParam, null, foundToken); // Fallback total
     }
   };
 
@@ -258,25 +264,25 @@ const Home = () => {
   };
 
   const repairLocalMemory = (id, token, data) => {
-    if (!id) return;
+    if (!id || !token) return;
     const stored = localStorage.getItem('yesoryes_owned') ? JSON.parse(localStorage.getItem('yesoryes_owned')) : [];
+    // On nettoie les doublons
     const filtered = stored.filter(i => i.id !== id);
     const newEntry = { id, token, createdAt: new Date().toISOString(), ...data };
     localStorage.setItem('yesoryes_owned', JSON.stringify([newEntry, ...filtered]));
   };
 
-  // Polling adaptatif (Backoff) pour attendre la validation Stripe (ET le changement de plan)
-  const waitForServerValidation = async (paymentId, contextData, stateParam = null, targetPlan = null) => {
+  // Polling adaptatif (Backoff)
+  const waitForServerValidation = async (paymentId, contextData, stateParam = null, targetPlan = null, persistentToken = null) => {
     setStatus('verifying');
     let attempt = 0;
     const maxAttempts = 25;
-    const delays = [1000, 1000, 2000, 2000, 3000, 3000, 5000]; // Délais progressifs
+    const delays = [1000, 1000, 2000, 2000, 3000, 3000, 5000]; 
 
     const poll = async () => {
       attempt++;
       const serverData = await getPublicInvitation(paymentId);
       
-      // Condition de succès : Payé ET (Plan cible atteint OU pas de plan cible)
       const isReady = serverData && 
                       serverData.payment_status === 'paid' && 
                       (!targetPlan || serverData.plan === targetPlan);
@@ -284,8 +290,8 @@ const Home = () => {
       if (isReady) {
         localStorage.removeItem('draft_invitation');
         
-        // Tentative de récupération du token via l'ID final
-        let finalToken = contextData?.token;
+        // On s'assure d'avoir le token
+        let finalToken = persistentToken || contextData?.token;
         if (!finalToken) {
              const owned = getOwnedInvitations();
              const realLocal = owned.find(i => i.id === serverData.id);
@@ -295,7 +301,6 @@ const Home = () => {
         const finalData = { ...contextData, id: serverData.id, plan: serverData.plan };
         if (finalToken) repairLocalMemory(serverData.id, finalToken, finalData);
 
-        // On retente la redirection ici aussi (si le webhook était lent)
         if (tryUpsellRedirect(stateParam, finalToken, finalData)) return;
 
         displaySuccess(finalData, finalToken);
@@ -305,9 +310,10 @@ const Home = () => {
         setTimeout(poll, nextDelay);
       } else {
         setStatus('verifying_long');
-        // Si timeout sur l'upsell, on affiche quand même le succès (en basic) pour ne pas bloquer
+        // Timeout : on affiche le succès "best effort"
         if (serverData?.payment_status === 'paid') {
-             displaySuccess({ ...contextData, id: serverData.id, plan: serverData.plan }, contextData?.token);
+             const finalToken = persistentToken || contextData?.token;
+             displaySuccess({ ...contextData, id: serverData.id, plan: serverData.plan }, finalToken);
         }
       }
     };
@@ -317,18 +323,20 @@ const Home = () => {
   const displaySuccess = (invite, token) => {
     if (!invite) return;
     
+    // MISE A JOUR FORM DATA avec le plan réel du serveur
     setFormData({ 
         sender: invite.sender || "Vous", 
         valentine: invite.valentine || "...", 
         plan: invite.plan || 'spy' 
     });
     
-    // Le lien espion n'est généré que si on a le token (sécurité)
+    // LE POINT CRITIQUE : Le lien espion n'est généré QUE si le token est présent
     const showSpyLink = token ? true : false;
-    setMonitoringToken(token); // Sauvegarde pour usage interne
+    setMonitoringToken(token);
 
     setGeneratedLinks({
       valentine: `${window.location.origin}/v/${invite.id}`,
+      // Si on a le token, on génère le lien Dashboard, sinon null (ce qui cause le blocage "Verrouillé")
       spy: showSpyLink ? `${window.location.origin}/spy/${invite.id}?token=${token}` : null
     });
     
@@ -337,7 +345,7 @@ const Home = () => {
 
   const restoreLastOrder = async () => {
     const owned = getOwnedInvitations();
-    if (owned.length > 0) waitForServerValidation(owned[0].id, owned[0]);
+    if (owned.length > 0) waitForServerValidation(owned[0].id, owned[0], null, null, owned[0].token);
     else {
         alert("Impossible de retrouver la commande. Contactez le support.");
         setStatus('idle');

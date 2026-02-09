@@ -129,7 +129,7 @@ const ValentineDemo = ({ onClose }) => {
                             <AlertTriangle size={10} /> Mode Démo Simplifié
                         </p>
                         <p className="text-[9px] text-rose-gold/40 italic leading-tight">
-                            Le moteur physique réel est 10x plus rapide, intelligent et imprévisible.
+                            Ce que vous voyez là est un brouillon, la vraie version est un bijou visuel qui va la faire craquer.
                         </p>
                     </div>
                 </div>

@@ -58,8 +58,8 @@ const ValentineDemo = ({ onClose }) => {
     // Logique de fuite (Version Démo)
     const moveButton = (e) => {
         // Déplacement aléatoire contraint pour rester dans la modale
-        const x = (Math.random() - 0.5) * 200; // Amplitude X
-        const y = (Math.random() - 0.5) * 150; // Amplitude Y
+        const x = (Math.random() - 0.5) * 180; 
+        const y = (Math.random() - 0.5) * 200; 
         setBtnOffset({ x, y });
     };
 
@@ -99,7 +99,7 @@ const ValentineDemo = ({ onClose }) => {
                         <span className="text-ruby-light">Valentine ?</span>
                     </h1>
 
-                    <div className="w-full relative h-[150px] flex flex-col items-center gap-4">
+                    <div className="w-full relative h-[180px] flex flex-col items-center gap-6">
                         <button 
                             onClick={handleYes}
                             className="w-full max-w-[200px] py-3 bg-gradient-to-r from-rose-gold to-[#e8b594] text-ruby-dark font-bold uppercase tracking-widest rounded-full shadow-lg z-20 transition-transform hover:scale-105"
@@ -114,9 +114,9 @@ const ValentineDemo = ({ onClose }) => {
                                 onClick={moveButton} // Pour le tactile
                                 style={{
                                     transform: `translate(${btnOffset.x}px, ${btnOffset.y}px)`,
-                                    transition: 'all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94)'
+                                    transition: 'all 0.15s ease-out' 
                                 }}
-                                className="px-6 py-2 border border-rose-gold/30 text-rose-gold/50 font-bold uppercase tracking-widest rounded-full text-[10px] absolute top-0"
+                                className="px-6 py-2 border border-rose-gold/30 text-rose-gold/50 font-bold uppercase tracking-widest rounded-full text-[10px] absolute top-0 hover:bg-rose-gold/5"
                             >
                                 NON
                             </button>
@@ -124,12 +124,12 @@ const ValentineDemo = ({ onClose }) => {
                     </div>
 
                     {/* MENTION STRATÉGIQUE */}
-                    <div className="mt-12 bg-black/40 border border-rose-gold/10 p-3 rounded-lg max-w-[250px] mx-auto animate-pulse">
-                        <p className="text-[9px] text-rose-gold/60 uppercase tracking-widest font-bold flex items-center justify-center gap-2">
+                    <div className="mt-8 bg-black/40 border border-rose-gold/10 p-3 rounded-lg max-w-[280px] mx-auto animate-pulse">
+                        <p className="text-[9px] text-rose-gold/60 uppercase tracking-widest font-bold flex items-center justify-center gap-2 mb-1">
                             <AlertTriangle size={10} /> Mode Démo Simplifié
                         </p>
-                        <p className="text-[9px] text-rose-gold/40 mt-1 italic">
-                            Le moteur physique réel est 10x plus rapide et intelligent.
+                        <p className="text-[9px] text-rose-gold/40 italic leading-tight">
+                            Le moteur physique réel est 10x plus rapide, intelligent et imprévisible.
                         </p>
                     </div>
                 </div>
@@ -415,6 +415,10 @@ const Home = () => {
     if (!invite) return;
     setFormData({ sender: invite.sender || "Vous", valentine: invite.valentine || "...", plan: invite.plan || 'spy' });
     setMonitoringToken(token);
+    
+    // CORRECTION ICI : Définition explicite de showSpyLink
+    const showSpyLink = !!token;
+    
     const safeId = invite.id.startsWith('cs_') ? (token ? 'ERREUR_ID' : invite.id) : invite.id;
     setGeneratedLinks({ valentine: `${window.location.origin}/v/${safeId}`, spy: showSpyLink ? `${window.location.origin}/spy/${safeId}?token=${token}` : null });
     setStatus('success');

@@ -3,8 +3,9 @@ import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { 
   Eye, Sparkles, Copy, Heart, TrendingUp, CreditCard, 
-  Timer, Loader2, Check, Shield, RefreshCw, PartyPopper, Lock, Crown
+  Timer, Loader2, Check, Shield, RefreshCw, PartyPopper, Lock, Crown, Play, X, MousePointer2
 } from 'lucide-react';
+import confetti from 'canvas-confetti';
 
 // --- CONFIGURATION ---
 const FAKE_NOTIFICATIONS = [
@@ -40,6 +41,10 @@ const Home = () => {
   const [activeNotif, setActiveNotif] = useState(null);
   const [copiedField, setCopiedField] = useState(null);
   const [mounted, setMounted] = useState(false);
+  
+  // --- ÉTAT DÉMO (SIMULATION) ---
+  const [showDemo, setShowDemo] = useState(false);
+  const [demoNoBtnPos, setDemoNoBtnPos] = useState({ x: 0, y: 0 });
 
   // --- ÉTATS INTELLIGENCE (LIVE MONITORING) ---
   const [answerReceived, setAnswerReceived] = useState(null); 
@@ -61,6 +66,24 @@ const Home = () => {
     if (status === 'idle') saveDraft(formData);
   }, [formData, status, saveDraft]);
 
+  // --- UTILITAIRE MAJUSCULE AUTO ---
+  const capitalize = (str) => {
+      if (!str) return '';
+      return str.charAt(0).toUpperCase() + str.slice(1);
+  };
+
+  // --- LOGIQUE DÉMO (PIÈGE) ---
+  const moveDemoButton = (e) => {
+      // Calcul d'une position aléatoire pour la fuite
+      const x = (Math.random() - 0.5) * 200;
+      const y = (Math.random() - 0.5) * 200;
+      setDemoNoBtnPos({ x, y });
+  };
+
+  const triggerDemoConfetti = () => {
+      confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 }, colors: ['#e11d48', '#fb7185', '#fff1f2'] });
+  };
+
   // 2. GESTION RETOUR PAIEMENT (STRATÉGIE FIL D'ARIANE + RÉCUPÉRATION ROBUSTE)
   useEffect(() => {
     // A. Récupération des paramètres URL
@@ -71,44 +94,32 @@ const Home = () => {
     const stateParam = searchParams.get('state');
 
     // Est-ce qu'on revient potentiellement de Stripe ?
-    // On est plus large : soit success=true, soit on a un payment_id (même cs_live)
     const isReturningFromStripe = fromStripe || (paymentId && paymentId.startsWith('cs_'));
 
     // B. STRATÉGIE "FIL D'ARIANE" (Le Sauveur d'Upsell)
-    // On vérifie si on a laissé un contexte en mémoire avant de partir
     const pendingUpsell = sessionStorage.getItem('pending_upsell_context');
     
-    // Si on revient de Stripe (peu importe les IDs bizarres) et qu'on a un contexte en attente
     if (isReturningFromStripe && pendingUpsell) {
         try {
             const context = JSON.parse(pendingUpsell);
-            // Vérification de fraîcheur (< 30 min)
             if (Date.now() - context.timestamp < 30 * 60 * 1000) {
                 console.log("🧵 Fil d'Ariane trouvé ! Restauration du contexte Upsell...");
-                
-                // On marque le succès localement pour SpyDashboard
                 sessionStorage.setItem(`spy_unlocked_${context.id}`, 'true');
-                sessionStorage.removeItem('pending_upsell_context'); // Nettoyage
+                sessionStorage.removeItem('pending_upsell_context'); 
 
-                // Redirection IMMÉDIATE vers le dashboard
                 console.log(`🔄 REDIRECTION FORCEE -> /spy/${context.id}`);
-                // Petit délai pour assurer que le storage est bien écrit
                 setTimeout(() => {
                     navigate(`/spy/${context.id}?token=${context.token}&success=true`);
                 }, 100);
                 return;
             }
-        } catch (e) {
-            console.error("Erreur lecture fil d'ariane", e);
-        }
+        } catch (e) { console.error("Erreur lecture fil d'ariane", e); }
     }
 
-    // C. Algorithme standard de sélection de l'ID (si fil d'ariane échoue)
+    // C. Algorithme standard de sélection de l'ID
     let urlId = null;
     if (clientRef) urlId = clientRef;
     else if (urlIdParam) urlId = urlIdParam;
-    
-    // Si on a que un payment_id et qu'il est propre (pas cs_), on le prend
     else if (paymentId && !paymentId.startsWith('cs_')) urlId = paymentId; 
 
     let recoveredToken = null;
@@ -135,7 +146,6 @@ const Home = () => {
     else if (urlId && !generatedLinks) {
         handleBackgroundCheck(urlId);
     }
-    // Cas ultime : Retour Stripe mais aucun ID utilisable et pas de fil d'ariane
     else if (isReturningFromStripe && !urlId && !generatedLinks) {
        console.log("⚠️ Retour Stripe sans ID et sans mémoire.");
        restoreLastOrder();
@@ -165,9 +175,7 @@ const Home = () => {
                 clearInterval(pollingIntervalRef.current);
             }
             if (checkCount >= MAX_CHECKS) clearInterval(pollingIntervalRef.current);
-        } catch (e) {
-            console.warn("Silent polling error", e);
-        }
+        } catch (e) { console.warn("Silent polling error", e); }
     };
 
     pollingIntervalRef.current = setInterval(checkLiveStatus, 5000);
@@ -236,12 +244,10 @@ const Home = () => {
 
     try {
         const serverData = await getPublicInvitation(paymentId);
-        
         const isUpsellReturn = !stateParam && recoveredData?.plan === 'basic';
         const targetPlan = serverData?.plan === 'spy' ? 'spy' : (isUpsellReturn ? 'spy' : null);
 
         if (serverData && serverData.payment_status === 'paid') {
-            
             if (!foundToken) {
                 const realLocal = owned.find(i => i.id === serverData.id);
                 if (realLocal) foundToken = realLocal.token;
@@ -250,7 +256,6 @@ const Home = () => {
             const displayPlan = targetPlan || serverData.plan;
 
             if (targetPlan && serverData.plan !== targetPlan) {
-                console.log("⏳ Polling plan update...");
                 if (foundToken && targetPlan === 'spy') {
                     const optimisticData = {
                         id: serverData.id,
@@ -262,7 +267,6 @@ const Home = () => {
                     waitForServerValidation(paymentId, null, stateParam, targetPlan, foundToken);
                     return; 
                 }
-                
                 waitForServerValidation(paymentId, { ...recoveredData, id: paymentId }, stateParam, targetPlan, foundToken);
                 return;
             }
@@ -288,7 +292,6 @@ const Home = () => {
 
   const tryUpsellRedirect = (stateParam, token, invite) => {
     if (!stateParam && token && invite.plan === 'spy') {
-         console.log("🔄 Retour Upsell détecté -> Redirection Dashboard");
          navigate(`/spy/${invite.id}?token=${token}`);
          return true;
     }
@@ -319,21 +322,16 @@ const Home = () => {
 
       if (isReady) {
         localStorage.removeItem('draft_invitation');
-        
         let finalToken = persistentToken || contextData?.token;
         if (!finalToken) {
              const owned = getOwnedInvitations();
              const realLocal = owned.find(i => i.id === serverData.id);
              if (realLocal) finalToken = realLocal.token;
         }
-
         const finalData = { ...contextData, id: serverData.id, plan: serverData.plan };
         if (finalToken) repairLocalMemory(serverData.id, finalToken, finalData);
-
         if (tryUpsellRedirect(stateParam, finalToken, finalData)) return;
-
         displaySuccess(finalData, finalToken);
-
       } else if (attempt < maxAttempts) {
         const nextDelay = delays[Math.min(attempt, delays.length - 1)] || 5000;
         setTimeout(poll, nextDelay);
@@ -350,7 +348,6 @@ const Home = () => {
 
   const displaySuccess = (invite, token) => {
     if (!invite) return;
-    
     setFormData({ 
         sender: invite.sender || "Vous", 
         valentine: invite.valentine || "...", 
@@ -359,15 +356,12 @@ const Home = () => {
     
     const showSpyLink = token ? true : false;
     setMonitoringToken(token);
-
-    // CORRECTION : On s'assure que l'ID dans le lien est le bon (pas de cs_live)
     const safeId = invite.id.startsWith('cs_') ? (token ? 'ERREUR_ID' : invite.id) : invite.id;
 
     setGeneratedLinks({
       valentine: `${window.location.origin}/v/${safeId}`,
       spy: showSpyLink ? `${window.location.origin}/spy/${safeId}?token=${token}` : null
     });
-    
     setStatus('success');
   };
 
@@ -480,11 +474,7 @@ const Home = () => {
                       <div className="flex items-center justify-center gap-4 mb-3">
                           <Heart className="w-8 h-8 text-ruby-light fill-ruby-light animate-ping absolute opacity-50" />
                           <Heart className="w-8 h-8 text-rose-gold fill-ruby-DEFAULT animate-pulse relative z-10" />
-                          
-                          <h3 className="text-3xl md:text-4xl font-script text-transparent bg-clip-text bg-gradient-to-r from-rose-gold via-cream to-rose-gold drop-shadow-md">
-                              ELLE A DIT OUI !
-                          </h3>
-                          
+                          <h3 className="text-3xl md:text-4xl font-script text-transparent bg-clip-text bg-gradient-to-r from-rose-gold via-cream to-rose-gold drop-shadow-md">ELLE A DIT OUI !</h3>
                           <Heart className="w-8 h-8 text-rose-gold fill-ruby-DEFAULT animate-pulse relative z-10" />
                       </div>
 
@@ -493,10 +483,7 @@ const Home = () => {
                       </p>
 
                       {monitoringToken && (
-                           <button 
-                             onClick={() => window.location.href = generatedLinks.spy}
-                             className="mt-2 px-8 py-3 bg-gradient-to-r from-rose-gold to-amber-200 hover:to-white text-ruby-dark rounded-full font-bold text-xs uppercase tracking-[0.2em] shadow-[0_0_20px_rgba(225,183,144,0.4)] transition-all transform active:scale-95 flex items-center gap-2"
-                           >
+                           <button onClick={() => window.location.href = generatedLinks.spy} className="mt-2 px-8 py-3 bg-gradient-to-r from-rose-gold to-amber-200 hover:to-white text-ruby-dark rounded-full font-bold text-xs uppercase tracking-[0.2em] shadow-[0_0_20px_rgba(225,183,144,0.4)] transition-all transform active:scale-95 flex items-center gap-2">
                              <Eye size={16} /> Voir le Rapport
                            </button>
                       )}
@@ -513,10 +500,7 @@ const Home = () => {
               <code className="text-rose-pale/80 text-sm flex-1 truncate font-mono select-all">
                 {generatedLinks.valentine}
               </code>
-              <button 
-                onClick={() => handleShare(generatedLinks.valentine, 'valentine')}
-                className="p-2 hover:bg-rose-gold/20 rounded-md transition-colors text-rose-gold"
-              >
+              <button onClick={() => handleShare(generatedLinks.valentine, 'valentine')} className="p-2 hover:bg-rose-gold/20 rounded-md transition-colors text-rose-gold">
                 {copiedField === 'valentine' ? <Check size={18} className="text-green-400" /> : <Copy size={18} />}
               </button>
             </div>
@@ -533,29 +517,20 @@ const Home = () => {
               <div className="absolute top-0 right-0 bg-purple-500/20 px-3 py-1 rounded-bl-lg text-[10px] text-purple-300 uppercase tracking-widest font-bold border-l border-b border-purple-500/20">
                 {formData.plan === 'spy' || formData.plan === 'premium' ? 'Activé' : 'Limité'}
               </div>
-              
               <h3 className="text-purple-300 font-serif mb-4 flex items-center justify-center gap-2">
                 <Shield size={18} />
                 {formData.plan === 'spy' || formData.plan === 'premium' ? 'Espace Espion' : 'Suivi Basique'}
               </h3>
-              
               <div className="flex gap-2 items-center bg-black/50 p-3 rounded-lg border border-purple-500/20">
                 <code className="text-purple-200/60 text-sm flex-1 truncate font-mono select-all blur-[2px] group-hover:blur-0 transition-all duration-500">
                   {generatedLinks.spy}
                 </code>
-                <button 
-                  onClick={() => handleShare(generatedLinks.spy, 'spy')}
-                  className="p-2 hover:bg-purple-500/20 rounded-md transition-colors text-purple-400"
-                >
+                <button onClick={() => handleShare(generatedLinks.spy, 'spy')} className="p-2 hover:bg-purple-500/20 rounded-md transition-colors text-purple-400">
                   {copiedField === 'spy' ? <Check size={18} className="text-green-400" /> : <Copy size={18} />}
                 </button>
               </div>
-              
               <div className="flex justify-center gap-4 mt-4">
-                  <button
-                      onClick={() => window.location.href = generatedLinks.spy}
-                      className="flex items-center gap-2 px-4 py-2 bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 text-sm rounded-full transition-all border border-purple-500/30"
-                  >
+                  <button onClick={() => window.location.href = generatedLinks.spy} className="flex items-center gap-2 px-4 py-2 bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 text-sm rounded-full transition-all border border-purple-500/30">
                       <Eye size={14} /> Ouvrir le Dashboard
                   </button>
               </div>
@@ -571,25 +546,13 @@ const Home = () => {
                 <p className="text-xs text-gray-500 mb-4">
                     Vous ne saurez pas combien de fois elle a hésité ou cliqué sur "NON".
                 </p>
-                
-                <a
-                    href={upsellSafeUrl}
-                    className="flex w-full items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-purple-900 to-purple-800 hover:brightness-110 text-purple-100 text-sm rounded-lg transition-all border border-purple-500/30 shadow-lg"
-                >
+                <a href={upsellSafeUrl} className="flex w-full items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-purple-900 to-purple-800 hover:brightness-110 text-purple-100 text-sm rounded-lg transition-all border border-purple-500/30 shadow-lg">
                     <Sparkles size={14} /> Débloquer le Carnet Secret (2.50€)
                 </a>
              </div>
           )}
 
-          <button 
-            onClick={() => {
-                setStatus('idle');
-                setGeneratedLinks(null);
-                setAnswerReceived(null);
-                setFormData({ ...formData, valentine: '' });
-            }}
-            className="text-rose-pale/50 hover:text-rose-pale text-sm underline underline-offset-4 transition-colors"
-          >
+          <button onClick={() => { setStatus('idle'); setGeneratedLinks(null); setAnswerReceived(null); setFormData({ ...formData, valentine: '' }); }} className="text-rose-pale/50 hover:text-rose-pale text-sm underline underline-offset-4 transition-colors">
             Créer une autre invitation
           </button>
         </div>
@@ -597,6 +560,7 @@ const Home = () => {
     );
   }
 
+  // --- RENDU FORMULAIRE ---
   return (
     <div className={`min-h-screen bg-ruby-dark p-4 flex flex-col items-center justify-center relative overflow-x-hidden pt-16 ${mounted ? 'opacity-100' : 'opacity-0'} transition-opacity duration-1000`}>
       
@@ -624,6 +588,14 @@ const Home = () => {
             (Regardez-la galérer...)
           </span>
         </p>
+
+        {/* --- BOUTON DÉMO --- */}
+        <button 
+            onClick={() => setShowDemo(true)}
+            className="flex items-center gap-2 mx-auto px-4 py-2 bg-rose-gold/10 hover:bg-rose-gold/20 text-rose-gold rounded-full text-xs uppercase tracking-widest border border-rose-gold/30 transition-all hover:scale-105"
+        >
+            <Play size={12} fill="currentColor" /> Voir un exemple du piège
+        </button>
       </header>
 
       <main className="card-valentine w-full max-w-2xl p-8 md:p-12 z-10 relative mb-8">
@@ -637,7 +609,7 @@ const Home = () => {
                 placeholder="Votre Prénom"
                 value={formData.sender}
                 onFocus={preloadAssets}
-                onChange={(e) => setFormData({...formData, sender: e.target.value})}
+                onChange={(e) => setFormData({...formData, sender: capitalize(e.target.value)})}
               />
             </div>
             <div className="group relative">
@@ -648,7 +620,7 @@ const Home = () => {
                 placeholder="Son Prénom"
                 value={formData.valentine}
                 onFocus={preloadAssets}
-                onChange={(e) => setFormData({...formData, valentine: e.target.value})}
+                onChange={(e) => setFormData({...formData, valentine: capitalize(e.target.value)})}
               />
             </div>
           </div>
@@ -735,6 +707,63 @@ const Home = () => {
           </div>
         </div>
       )}
+
+      {/* --- MODALE DÉMO SIMULATION --- */}
+      {showDemo && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in">
+              <div className="w-full max-w-sm h-[600px] bg-black border border-rose-gold/30 rounded-[2rem] shadow-2xl overflow-hidden relative flex flex-col">
+                  {/* Phone Notch Mockup */}
+                  <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-6 bg-black rounded-b-xl border-b border-x border-white/10 z-20"></div>
+                  
+                  {/* CLOSE BTN */}
+                  <button 
+                    onClick={() => setShowDemo(false)}
+                    className="absolute top-4 right-4 z-30 p-2 bg-black/50 rounded-full text-white/50 hover:text-white hover:bg-white/20 transition-all"
+                  >
+                      <X size={20} />
+                  </button>
+
+                  <div className="flex-1 bg-ruby-dark relative overflow-hidden flex flex-col items-center justify-center p-6">
+                      <div className="absolute inset-0 pointer-events-none opacity-30 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]"></div>
+                      
+                      <div className="text-center z-10 space-y-8 w-full">
+                          <p className="text-rose-gold/80 font-serif italic text-sm">Arthur vous a envoyé ceci...</p>
+                          <h2 className="text-4xl font-script text-cream leading-tight">
+                              Léa,<br/>Veux-tu être ma Valentine ?
+                          </h2>
+
+                          <div className="flex flex-col gap-4 w-full px-4">
+                              <button 
+                                onClick={triggerDemoConfetti}
+                                className="w-full py-3 bg-rose-gold text-ruby-dark font-bold uppercase tracking-widest rounded-full shadow-lg hover:scale-105 transition-transform"
+                              >
+                                  OUI !
+                              </button>
+                              
+                              <div className="relative h-12">
+                                  <button
+                                    onMouseEnter={moveDemoButton}
+                                    onClick={moveDemoButton} // Pour mobile
+                                    style={{
+                                        transform: `translate(${demoNoBtnPos.x}px, ${demoNoBtnPos.y}px)`,
+                                        transition: 'all 0.2s ease-out'
+                                    }}
+                                    className="absolute left-0 right-0 py-3 border border-rose-gold/30 text-rose-gold/50 font-bold uppercase tracking-widest rounded-full text-xs flex items-center justify-center gap-2"
+                                  >
+                                      NON <MousePointer2 size={12} />
+                                  </button>
+                              </div>
+                          </div>
+                      </div>
+                  </div>
+
+                  <div className="bg-black py-3 text-center border-t border-white/10">
+                      <p className="text-[10px] text-white/30 uppercase tracking-widest">Simulateur - Vue de Léa</p>
+                  </div>
+              </div>
+          </div>
+      )}
+
     </div>
   );
 };

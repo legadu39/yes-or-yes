@@ -193,6 +193,10 @@ const Home = () => {
     try {
         const serverData = await getPublicInvitation(paymentId);
         
+        // DÉTECTION UPSELL : Si pas de stateParam et qu'on était 'basic', on vise 'spy'
+        const isUpsellReturn = !stateParam && recoveredData?.plan === 'basic';
+        const targetPlan = isUpsellReturn ? 'spy' : null;
+
         if (serverData && serverData.payment_status === 'paid') {
             // Fix ID reconciliation (Stripe ID vs UUID)
             if (!foundToken) {
@@ -200,11 +204,18 @@ const Home = () => {
                 if (realLocal) foundToken = realLocal.token;
             }
 
+            // CRITIQUE : Si c'est un upsell, on attend que le plan devienne 'spy'
+            if (targetPlan && serverData.plan !== targetPlan) {
+                console.log("⏳ Paiement validé mais Plan pas encore à jour. Polling...");
+                waitForServerValidation(paymentId, { ...recoveredData, id: paymentId }, stateParam, targetPlan);
+                return;
+            }
+
             const finalInvite = {
                 id: serverData.id,
                 sender: serverData.sender || recoveredData?.sender || "Vous",
                 valentine: serverData.valentine || recoveredData?.valentine || "...",
-                plan: serverData.plan // Source de vérité pour le plan
+                plan: serverData.plan 
             };
 
             repairLocalMemory(finalInvite.id, foundToken, finalInvite);
@@ -215,8 +226,7 @@ const Home = () => {
             displaySuccess(finalInvite, foundToken);
         } else {
             // Paiement pas encore propagé -> Polling
-            // On passe stateParam pour pouvoir retenter le redirect plus tard
-            waitForServerValidation(paymentId, { ...recoveredData, id: paymentId }, stateParam);
+            waitForServerValidation(paymentId, { ...recoveredData, id: paymentId }, stateParam, targetPlan);
         }
     } catch (e) {
         waitForServerValidation(paymentId, recoveredData, stateParam); // Fallback total
@@ -225,9 +235,9 @@ const Home = () => {
 
   // NOUVEAU : Fonction helper pour vérifier la redirection Upsell
   const tryUpsellRedirect = (stateParam, token, invite) => {
-    // Si pas de paramètre 'state' (donc pas le flux de création initial via formulaire)
+    // Si pas de paramètre 'state' (donc pas le flux de création initial)
     // ET qu'on a le token (le user est propriétaire)
-    // ET que c'est le plan Spy (donc potentiellement un upsell réussi)
+    // ET que c'est le plan Spy (donc upsell réussi)
     if (!stateParam && token && invite.plan === 'spy') {
          console.log("🔄 Retour Upsell détecté -> Redirection Dashboard");
          navigate(`/spy/${invite.id}?token=${token}`);
@@ -244,8 +254,8 @@ const Home = () => {
     localStorage.setItem('yesoryes_owned', JSON.stringify([newEntry, ...filtered]));
   };
 
-  // Polling adaptatif (Backoff) pour attendre la validation Stripe
-  const waitForServerValidation = async (paymentId, contextData, stateParam = null) => {
+  // Polling adaptatif (Backoff) pour attendre la validation Stripe (ET le changement de plan)
+  const waitForServerValidation = async (paymentId, contextData, stateParam = null, targetPlan = null) => {
     setStatus('verifying');
     let attempt = 0;
     const maxAttempts = 25;
@@ -255,7 +265,12 @@ const Home = () => {
       attempt++;
       const serverData = await getPublicInvitation(paymentId);
       
-      if (serverData && serverData.payment_status === 'paid') {
+      // Condition de succès : Payé ET (Plan cible atteint OU pas de plan cible)
+      const isReady = serverData && 
+                      serverData.payment_status === 'paid' && 
+                      (!targetPlan || serverData.plan === targetPlan);
+
+      if (isReady) {
         localStorage.removeItem('draft_invitation');
         
         // Tentative de récupération du token via l'ID final
@@ -269,7 +284,6 @@ const Home = () => {
         const finalData = { ...contextData, id: serverData.id, plan: serverData.plan };
         if (finalToken) repairLocalMemory(serverData.id, finalToken, finalData);
 
-        // --- CORRECTION CRITIQUE ---
         // On retente la redirection ici aussi (si le webhook était lent)
         if (tryUpsellRedirect(stateParam, finalToken, finalData)) return;
 
@@ -280,6 +294,10 @@ const Home = () => {
         setTimeout(poll, nextDelay);
       } else {
         setStatus('verifying_long');
+        // Si timeout sur l'upsell, on affiche quand même le succès (en basic) pour ne pas bloquer
+        if (serverData?.payment_status === 'paid') {
+             displaySuccess({ ...contextData, id: serverData.id, plan: serverData.plan }, contextData?.token);
+        }
       }
     };
     poll();
@@ -435,7 +453,7 @@ const Home = () => {
                       {/* Bouton pour voir le détail si on a le token */}
                       {monitoringToken && (
                            <button 
-                             onClick={() => window.open(generatedLinks.spy, '_blank')}
+                             onClick={() => window.location.href = generatedLinks.spy}
                              className="mt-2 px-8 py-3 bg-gradient-to-r from-rose-gold to-amber-200 hover:to-white text-ruby-dark rounded-full font-bold text-xs uppercase tracking-[0.2em] shadow-[0_0_20px_rgba(225,183,144,0.4)] transition-all transform active:scale-95 flex items-center gap-2"
                            >
                              <Eye size={16} /> Voir le Rapport
@@ -496,7 +514,7 @@ const Home = () => {
               
               <div className="flex justify-center gap-4 mt-4">
                   <button
-                      onClick={() => window.open(generatedLinks.spy, '_blank')}
+                      onClick={() => window.location.href = generatedLinks.spy}
                       className="flex items-center gap-2 px-4 py-2 bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 text-sm rounded-full transition-all border border-purple-500/30"
                   >
                       <Eye size={14} /> Ouvrir le Dashboard

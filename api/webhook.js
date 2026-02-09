@@ -1,5 +1,5 @@
 // ============================================================================
-// WEBHOOK STRIPE - VERSION CHIRURGICALE & ROBUSTE (INTELLIGENTE)
+// WEBHOOK STRIPE - VERSION FINALISÉE (Sécurité + Intelligence Financière)
 // Fichier : api/webhook.js
 // ============================================================================
 
@@ -68,7 +68,7 @@ export default async function handler(req, res) {
 
     // 3. Vérification cryptographique de la signature Stripe
     event = stripe.webhooks.constructEvent(rawBody, signature, WEBHOOK_SECRET);
-    console.log(`✅ Webhook Stripe reçu et vérifié: ${event.type}`);
+    // console.log(`✅ Webhook Stripe reçu et vérifié: ${event.type}`); // Commenté pour réduire le bruit
 
   } catch (err) {
     console.error('❌ Erreur vérification signature:', err.message);
@@ -79,17 +79,30 @@ export default async function handler(req, res) {
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object;
     
-    // Récupération robuste de l'ID (Support du format composite ID___TOKEN)
-    // On nettoie l'ID pour ne garder que la partie UUID avant le séparateur "___"
-    let rawId = session.client_reference_id || session.metadata?.invitationId;
-    const invitationId = rawId ? rawId.split('___')[0] : null;
-
-    if (!invitationId) {
-      console.error('❌ Aucun invitationId trouvé dans la session Stripe:', session.id);
-      return res.status(200).json({ received: true, warning: 'No invitation ID found' });
+    // --- CORRECTION DU BUG UUID (Extraction Robuste) ---
+    // On récupère le client_reference_id envoyé par le front (format: "UUID" ou "UUID___TOKEN")
+    const rawReference = session.client_reference_id;
+    
+    // Extraction propre de l'UUID (partie avant le '___')
+    // Si pas de référence, on tente fallback sur metadata, sinon null
+    let invitationId = null;
+    
+    if (rawReference) {
+        invitationId = rawReference.split('___')[0];
+    } else if (session.metadata?.invitationId) {
+        invitationId = session.metadata.invitationId;
     }
 
-    console.log(`💰 Paiement reçu pour invitation: ${invitationId} (RawRef: ${rawId})`);
+    // Validation Regex pour éviter le crash "invalid input syntax" si Stripe renvoie autre chose
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+    if (!invitationId || !uuidRegex.test(invitationId)) {
+      console.error(`❌ ID invalide ou manquant dans la session: "${invitationId}" (RawRef: ${rawReference})`);
+      // On répond 200 pour que Stripe arrête de renvoyer l'erreur, mais on log le problème
+      return res.status(200).json({ received: true, warning: 'Invalid or missing invitation ID' });
+    }
+
+    console.log(`💰 Paiement validé pour l'invitation: ${invitationId}`);
 
     try {
       // 5. Récupération de l'état ACTUEL avant mise à jour
@@ -110,29 +123,28 @@ export default async function handler(req, res) {
       }
 
       // 6. INTELLIGENCE FINANCIÈRE : DÉCISION DU PLAN
+      // On vérifie le montant pour savoir si c'est l'Upsell (1€) ou le prix normal
       const amountPaid = session.amount_total; // en cents
       
       const updateData = { 
         payment_status: 'paid',
-        stripe_session_id: session.id,
+        stripe_payment_id: session.id, // Correction du nom de colonne pour correspondre à ton schéma (stripe_payment_id vs stripe_session_id)
         updated_at: new Date().toISOString()
       };
 
-      // --- LOGIQUE D'UPGRADE "PARANOIAQUE" (ROBUSTE) ---
-      // On force le passage en SPY si :
-      // A. Le montant ressemble à l'offre Spy (2.50€ +/- taxes)
-      // B. Le montant ressemble à l'offre Upsell (1.00€ +/- taxes)
-      // C. L'utilisateur a DÉJÀ payé (Basic) et repaie -> C'est forcément un upgrade
-      
-      const isSpyPrice = (amountPaid >= 230 && amountPaid <= 270); // 2.50€ +/-
-      const isUpsellPrice = (amountPaid >= 80 && amountPaid <= 130); // 1.00€ +/-
+      // --- LOGIQUE D'UPGRADE ROBUSTE ---
+      // A. Offre Spy standard (~2.50€ = 250 cents)
+      const isSpyPrice = (amountPaid >= 230 && amountPaid <= 270); 
+      // B. Offre Upsell (~1.00€ = 100 cents)
+      const isUpsellPrice = (amountPaid >= 80 && amountPaid <= 130);
+      // C. L'utilisateur a DÉJÀ payé -> Upgrade forcé
       const isAlreadyPaid = current.payment_status === 'paid';
 
       if (isSpyPrice || isUpsellPrice || isAlreadyPaid) {
-          console.log(`✨ UPGRADE DÉTECTÉ (Montant: ${amountPaid}, Déjà payé: ${isAlreadyPaid}). Passage au plan 'spy'.`);
+          console.log(`✨ UPGRADE CONFIRMÉ (Montant: ${amountPaid}, Déjà payé: ${isAlreadyPaid}) -> Passage en SPY`);
           updateData.plan = 'spy';
       } else {
-          console.log(`ℹ️ Paiement Standard (Montant: ${amountPaid}). Plan actuel conservé: ${current.plan}`);
+          console.log(`ℹ️ Paiement reçu (Montant: ${amountPaid}). Plan conservé: ${current.plan}`);
       }
 
       // 7. Mise à jour DB
@@ -146,7 +158,7 @@ export default async function handler(req, res) {
         return res.status(500).json({ error: 'Database update failed', details: updateError.message });
       }
 
-      console.log(`✅ SUCCÈS : Invitation ${invitationId} mise à jour (Plan Final: ${updateData.plan || current.plan})`);
+      console.log(`✅ SUCCÈS FINAL : Invitation ${invitationId} mise à jour.`);
       return res.status(200).json({ received: true, status: 'updated_to_paid' });
 
     } catch (err) {

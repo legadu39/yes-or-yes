@@ -1,11 +1,13 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { useTranslation } from 'react-i18next';
 
 const AppContext = createContext();
 
 export const useApp = () => useContext(AppContext);
 
 export const AppProvider = ({ children }) => {
+  const { t } = useTranslation();
   const [ownedInvitations, setOwnedInvitations] = useState([]);
 
   // FONCTION UTILITAIRE : Lire les invitations stockées
@@ -156,8 +158,7 @@ export const AppProvider = ({ children }) => {
         const displayTime = isNaN(timeAgo) ? "quelques" : timeAgo;
         
         const reuse = window.confirm(
-          `Une invitation identique pour ${valentine} existe déjà (créée il y a ${displayTime}s).\n\n` +
-          `Voulez-vous la réutiliser au lieu d'en créer une nouvelle ?`
+          t('alerts.duplicate_msg', { name: valentine, time: displayTime })
         );
 
         if (reuse) {
@@ -451,5 +452,3 @@ export const AppProvider = ({ children }) => {
 };
 
 export default AppContext;
-
-//

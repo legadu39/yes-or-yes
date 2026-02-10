@@ -2,11 +2,13 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { Music, VolumeX, Heart, MailOpen, RefreshCw } from 'lucide-react';
+import { useTranslation, Trans } from 'react-i18next';
 import confetti from 'canvas-confetti';
 
 const ValentinePage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const { getPublicInvitation, incrementAttempts, acceptInvitation, markAsViewed } = useApp();
   
   const [invitation, setInvitation] = useState(null);
@@ -277,12 +279,14 @@ const ValentinePage = () => {
              
              <div className="relative group p-10 text-center">
                 <MailOpen className="w-24 h-24 text-rose-gold animate-bounce mb-6 mx-auto drop-shadow-lg" />
-                <h2 className="text-3xl font-script text-rose-pale text-center mb-2">Une lettre pour vous</h2>
+                <h2 className="text-3xl font-script text-rose-pale text-center mb-2">{t('valentine.letter_title')}</h2>
                 <p className="text-cream/60 text-xs uppercase tracking-widest text-center animate-pulse">
-                    Toucher pour ouvrir
+                    {t('valentine.letter_subtitle')}
                 </p>
                 {invitation.sender && (
-                    <p className="mt-4 text-rose-gold/50 font-serif italic text-sm">De la part de {invitation.sender}</p>
+                    <p className="mt-4 text-rose-gold/50 font-serif italic text-sm">
+                      {t('valentine.letter_from', { name: invitation.sender })}
+                    </p>
                 )}
              </div>
         </div>
@@ -296,10 +300,9 @@ const ValentinePage = () => {
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-ruby-light/20 via-ruby-dark to-[#1a0508] pointer-events-none"></div>
         <div className="relative z-10 text-center p-8">
           <Heart className="w-16 h-16 text-rose-gold animate-pulse mx-auto mb-4" />
-          <h2 className="text-3xl font-script text-rose-pale mb-4">Un instant...</h2>
+          <h2 className="text-3xl font-script text-rose-pale mb-4">{t('valentine.pending_title')}</h2>
           <p className="text-cream/60 text-sm mb-6">
-            L'invitation est en cours de scellage.<br/>
-            Veuillez patienter...
+            {t('valentine.pending_desc')}
           </p>
           <div className="flex justify-center gap-2 mb-8">
             <div className="w-2 h-2 bg-rose-gold rounded-full animate-bounce" style={{animationDelay: '0s'}}></div>
@@ -312,7 +315,7 @@ const ValentinePage = () => {
             onClick={() => window.location.reload()}
             className="flex items-center gap-2 mx-auto px-4 py-2 border border-rose-gold/30 rounded-full text-rose-gold/70 text-xs uppercase tracking-widest hover:bg-rose-gold/10 transition-colors"
           >
-            <RefreshCw size={14} /> Vérifier manuellement
+            <RefreshCw size={14} /> {t('valentine.pending_btn')}
           </button>
         </div>
       </div>
@@ -336,14 +339,16 @@ const ValentinePage = () => {
       <div className="z-20 text-center px-4 relative max-w-3xl w-full">
         
         <p className="text-rose-pale/80 font-serif italic text-2xl mb-10 tracking-wide animate-float">
-          Une question de cœur pour {invitation.valentine}...
+          {t('valentine.intro_question')}
         </p>
 
         <h1 className="text-6xl md:text-8xl font-script text-rose-pale mb-16 drop-shadow-lg leading-snug">
-          Veux-tu être ma <br/>
-          <span className="text-ruby-light relative inline-block mt-2 drop-shadow-[0_0_15px_rgba(210,77,87,0.5)]">
-            Valentine ?
-          </span>
+          <Trans i18nKey="valentine.main_question">
+             Veux-tu être ma <br/>
+             <span className="text-ruby-light relative inline-block mt-2 drop-shadow-[0_0_15px_rgba(210,77,87,0.5)]">
+               Valentine ?
+             </span>
+          </Trans>
         </h1>
 
         <div className="flex flex-col md:flex-row justify-center items-center gap-12 min-h-[200px] relative">
@@ -354,7 +359,7 @@ const ValentinePage = () => {
               className="group relative px-12 py-6 bg-gradient-to-br from-ruby-DEFAULT to-ruby-dark text-rose-pale font-serif font-medium text-2xl tracking-widest border border-rose-gold/50 shadow-[0_0_50px_rgba(155,27,48,0.5)] transition-all duration-500 rounded-full overflow-hidden z-40 hover:shadow-[0_0_70px_rgba(210,77,87,0.7)] hover:border-rose-gold"
           >
               <span className="relative z-10 flex items-center gap-3">
-                OUI, JE LE VEUX
+                {t('valentine.btn_yes_full')}
                 <Heart fill="currentColor" size={24} className="animate-pulse-slow text-ruby-light" />
               </span>
               <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent transform -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-in-out"></div>
@@ -368,7 +373,12 @@ const ValentinePage = () => {
               onClick={(e) => e.stopPropagation()} 
               className="px-6 py-3 text-rose-pale/40 font-serif border border-rose-pale/10 hover:border-ruby-light/30 hover:text-ruby-light/60 transition-all text-sm tracking-[0.2em] uppercase cursor-none backdrop-blur-sm rounded-full"
           >
-              {escapeCount === 0 ? "Non, merci" : fatigueLevel > 80 ? "Bon, d'accord..." : "Impossible..."}
+              {escapeCount === 0 
+                  ? t('valentine.btn_no_1') 
+                  : fatigueLevel > 80 
+                      ? t('valentine.btn_no_2') 
+                      : t('valentine.btn_no_3')
+              }
           </button>
 
         </div>

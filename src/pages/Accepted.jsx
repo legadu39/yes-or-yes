@@ -3,10 +3,12 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import confetti from 'canvas-confetti';
 import html2canvas from 'html2canvas';
 import { Share2, Heart, Sparkles, ArrowRight, Copy, Download, Loader2 } from 'lucide-react';
+import { useTranslation, Trans } from 'react-i18next';
 
 const Accepted = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { t } = useTranslation();
   const [invitation, setInvitation] = useState(null);
   const [copied, setCopied] = useState(false);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
@@ -18,7 +20,7 @@ const Accepted = () => {
         setInvitation(location.state.invitation);
         triggerCelebration();
     } 
-    // 2. Fallback : Si on refresh la page, on cherche dans le localStorage spécifique 'last_accepted_invitation'
+    // 2. Fallback : Si on refresh la page, on cherche dans le localStorage spécifique
     else {
         const saved = localStorage.getItem('last_accepted_invitation');
         if (saved) {
@@ -30,7 +32,7 @@ const Accepted = () => {
                 navigate('/');
             }
         } else {
-            // Si aucune donnée (ni state, ni local), redirection vers l'accueil
+            // Si aucune donnée, retour accueil
             console.warn("Aucune donnée d'invitation trouvée, retour accueil.");
             navigate('/');
         }
@@ -38,7 +40,6 @@ const Accepted = () => {
   }, [location, navigate]);
 
   const triggerCelebration = () => {
-    // 1. Lancement des Confettis (Version Canvas optimisée)
     const duration = 3000;
     const end = Date.now() + duration;
 
@@ -64,7 +65,6 @@ const Accepted = () => {
     };
     frame();
 
-    // 2. Retour Haptique (Vibration de victoire)
     if (navigator.vibrate) {
       navigator.vibrate([200, 100, 200, 100, 400]);
     }
@@ -73,13 +73,11 @@ const Accepted = () => {
   if (!invitation) return null;
 
   const shareUrl = `${window.location.origin}/v/${invitation.id}`;
-  // ALIGNEMENT BUSINESS PLAN : Message Viral Optimisé pour la Valentine
-  const shareTitle = `J'ai dit OUI ! ❤️`;
-  const shareText = `J'ai dit OUI... (Le bouton NON s'enfuyait, j'avais pas le choix !) 😂 \n\nToi aussi, piège ton mec ici :`;
+  const shareTitle = t('accepted.share_title');
+  const shareText = t('accepted.share_text');
 
   // Fonction de partage intelligente (Growth Loop)
   const handleShare = async () => {
-    // 1. Essai API Native (Mobile : Insta, SMS, WhatsApp...)
     if (navigator.share) {
         try {
             await navigator.share({
@@ -93,7 +91,6 @@ const Accepted = () => {
         }
     }
 
-    // 2. Fallback Clipboard
     navigator.clipboard.writeText(`${shareText} ${shareUrl}`);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -119,7 +116,7 @@ const Accepted = () => {
       link.click();
     } catch (error) {
       console.error("Erreur génération image:", error);
-      alert("Impossible de générer l'image sur ce navigateur.");
+      alert(t('common.error'));
     } finally {
       setIsGeneratingImage(false);
     }
@@ -139,23 +136,26 @@ const Accepted = () => {
             </div>
         </div>
 
-        {/* CORRECTION UX : Message adressé à la Valentine (2ème personne) */}
         <h1 className="text-6xl md:text-8xl font-script text-rose-pale mb-6 drop-shadow-lg leading-tight">
-          Tu as dit <br/>
-          <span className="text-ruby-light text-7xl md:text-9xl">OUI !</span>
+          <Trans i18nKey="accepted.title_main">
+              Tu as dit <br/>
+              <span className="text-ruby-light text-7xl md:text-9xl">OUI !</span>
+          </Trans>
         </h1>
         
         <div className="w-32 h-1 bg-gradient-to-r from-transparent via-rose-gold/50 to-transparent mx-auto mb-10"></div>
 
         <p className="text-2xl font-serif text-cream mb-12 leading-relaxed font-light">
-          Félicitations {invitation.valentine} !<br/>
-          <span className="font-medium text-ruby-light border-b border-ruby-light/30 pb-1">{invitation.sender}</span> est officiellement la personne la plus heureuse du monde.
-          <span className="block text-sm opacity-50 mt-2 italic">(On l'a prévenu immédiatement ❤️)</span>
+          <Trans i18nKey="accepted.subtitle" values={{ valentine: invitation.valentine, sender: invitation.sender }}>
+             Félicitations {{ valentine }} !<br/>
+             <span className="font-medium text-ruby-light border-b border-ruby-light/30 pb-1">{{ sender }}</span> est officiellement la personne la plus heureuse du monde.
+          </Trans>
+          <span className="block text-sm opacity-50 mt-2 italic">({t('accepted.subtitle_note')})</span>
         </p>
 
         {/* Filigrane pour la capture d'écran - ADAPTÉ POUR STORY */}
         <div className="absolute bottom-2 right-4 text-[10px] text-rose-gold/30 font-mono uppercase tracking-widest opacity-0 data-[html2canvas-ignore='false']:opacity-100">
-           Preuve : J'ai craqué
+           {t('accepted.watermark_proof')}
         </div>
         
         {/* URL en gros pour le viral */}
@@ -173,7 +173,7 @@ const Accepted = () => {
                 className="w-full flex items-center justify-center gap-2 bg-ruby-dark text-cream py-4 rounded-xl tracking-[0.1em] text-xs uppercase font-medium border border-rose-gold/30 hover:bg-ruby-DEFAULT/90 transition-all shadow-xl"
             >
                 {copied ? <Copy size={16} /> : <Share2 size={16} />}
-                {copied ? "Lien copié !" : "Annoncer la nouvelle"}
+                {copied ? t('accepted.btn_copied') : t('accepted.btn_share')}
             </button>
         </div>
 
@@ -185,13 +185,13 @@ const Accepted = () => {
                 className="w-full flex items-center justify-center gap-2 bg-rose-gold/10 text-rose-gold py-4 rounded-xl tracking-[0.1em] text-xs uppercase font-medium border border-rose-gold/20 hover:bg-rose-gold hover:text-ruby-dark transition-all"
             >
                 {isGeneratingImage ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
-                Sauver le souvenir
+                {t('accepted.btn_download')}
             </button>
         </div>
       </div>
 
       <p className="text-xs text-rose-gold/50 italic mt-6" data-html2canvas-ignore="true">
-            Partagez sur TikTok ou Insta pour piéger vos amis !
+            {t('accepted.footer_hint')}
       </p>
 
       {/* Footer Discret */}
@@ -200,7 +200,7 @@ const Accepted = () => {
         className="mt-12 group flex items-center gap-2 text-rose-pale/60 hover:text-rose-pale transition-colors font-serif italic text-sm tracking-wider"
         data-html2canvas-ignore="true"
       >
-        <span>À mon tour de piéger quelqu'un</span>
+        <span>{t('accepted.btn_new')}</span>
         <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
       </button>
     </div>

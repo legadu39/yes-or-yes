@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
+import { useTranslation } from 'react-i18next';
 import { 
   Shield, Clock, MousePointer2, CheckCircle2, HeartHandshake, 
   LockKeyhole, Loader2, Ban, Eye, PartyPopper, Lock, Sparkles, 
@@ -15,6 +16,7 @@ const SpyDashboard = () => {
   const { id } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const { getSpyReport, verifyPaymentStatus, ownedInvitations } = useApp();
   
   const [data, setData] = useState(null);
@@ -196,9 +198,9 @@ const SpyDashboard = () => {
       const totalViews = logs.filter(l => l.action === 'viewed').length;
       
       let profile = {
-          archetype: "Inconnu",
-          description: "Données insuffisantes...",
-          advice: "Attendez qu'elle ouvre le lien.",
+          archetype: t('dashboard.archetype_unknown'),
+          description: t('dashboard.desc_unknown'),
+          advice: t('dashboard.advice_unknown'),
           score: 0,
           color: "text-rose-pale"
       };
@@ -217,56 +219,56 @@ const SpyDashboard = () => {
       // Détermination de l'Archétype
       if (hasAnswered) {
           if (totalRefusals === 0) {
-              profile.archetype = "L'Amoureuse Transie";
-              profile.description = "Elle a dit OUI tout de suite. Aucune hésitation. C'est le grand amour.";
-              profile.advice = "Foncez ! Elle n'attend que votre message.";
+              profile.archetype = t('dashboard.archetype_lover');
+              profile.description = t('dashboard.desc_lover');
+              profile.advice = t('dashboard.advice_lover');
               profile.color = "text-emerald-400";
           } else if (totalRefusals < 5) {
-              profile.archetype = "La Joueuse";
-              profile.description = "Elle vous a taquiné avec quelques 'NON' avant de craquer. Elle aime le jeu.";
-              profile.advice = "Soyez joueur en retour. Ne soyez pas trop sérieux.";
+              profile.archetype = t('dashboard.archetype_player');
+              profile.description = t('dashboard.desc_player');
+              profile.advice = t('dashboard.advice_player');
               profile.color = "text-pink-400";
           } else {
-              profile.archetype = "La Difficile à Cuire";
-              profile.description = "Elle a résisté longtemps (plus de 5 refus !) mais vous l'avez eue.";
-              profile.advice = "C'est une victoire méritée. Montrez-lui que vous en valez la peine.";
+              profile.archetype = t('dashboard.archetype_hard_to_get');
+              profile.description = t('dashboard.desc_hard_to_get');
+              profile.advice = t('dashboard.advice_hard_to_get');
               profile.color = "text-purple-400";
           }
       } else if (isRejected) {
-          profile.archetype = "La Reine des Glaces";
-          profile.description = "Refus catégorique. Aïe.";
-          profile.advice = "Passez à autre chose, soldat.";
+          profile.archetype = t('dashboard.archetype_ice_queen');
+          profile.description = t('dashboard.desc_ice_queen');
+          profile.advice = t('dashboard.advice_ice_queen');
           profile.color = "text-red-500";
       } else {
           // En attente
           if (totalRefusals > 8) {
-              profile.archetype = "L'Acharnée";
-              profile.description = "Elle s'amuse beaucoup trop avec le bouton NON.";
-              profile.advice = "Elle joue avec vos nerfs. Laissez-la faire, elle finira par craquer.";
+              profile.archetype = t('dashboard.archetype_relentless');
+              profile.description = t('dashboard.desc_relentless');
+              profile.advice = t('dashboard.advice_relentless');
               profile.color = "text-orange-400";
           } else if (totalViews > 3) {
-              profile.archetype = "L'Indécise (ou l'Obsédée)";
-              profile.description = "Elle revient voir la page sans cesse sans oser cliquer.";
-              profile.advice = "Elle a peur de s'engager. Envoyez-lui un petit message rassurant.";
+              profile.archetype = t('dashboard.archetype_undecided');
+              profile.description = t('dashboard.desc_undecided');
+              profile.advice = t('dashboard.advice_undecided');
               profile.color = "text-blue-400";
           } else if (totalViews > 0) {
-              profile.archetype = "La Curieuse";
-              profile.description = "Elle a vu, elle réfléchit.";
-              profile.advice = "Patience. Ne la brusquez pas.";
+              profile.archetype = t('dashboard.archetype_curious');
+              profile.description = t('dashboard.desc_curious');
+              profile.advice = t('dashboard.advice_curious');
               profile.color = "text-rose-pale";
           }
       }
 
       return profile;
-  }, [data, enrichedLogs, hasAnswered, isRejected]);
+  }, [data, enrichedLogs, hasAnswered, isRejected, t]);
 
   const translateLog = (log) => {
       switch(log.action) {
-          case 'viewed': return "Elle a ouvert votre lettre...";
-          case 'clicked_yes': return "🔥 ELLE A CLIQUÉ SUR OUI !";
-          case 'clicked_no': return "😈 Elle essaie de fuir (Clic sur NON)";
-          case 'music_started': return "🎵 Elle écoute la musique...";
-          default: return "Action détectée";
+          case 'viewed': return t('dashboard.log_viewed');
+          case 'clicked_yes': return t('dashboard.log_yes');
+          case 'clicked_no': return t('dashboard.log_no');
+          case 'music_started': return t('dashboard.log_music');
+          default: return t('dashboard.log_detected');
       }
   };
 
@@ -277,8 +279,8 @@ const SpyDashboard = () => {
       <div className="min-h-screen bg-ruby-dark flex flex-col items-center justify-center relative overflow-hidden">
         <div className="relative z-10 text-center">
             <Loader2 className="w-16 h-16 text-rose-gold animate-spin mx-auto mb-6" />
-            <h2 className="text-4xl font-script text-rose-pale mb-2">Analyse Tactique...</h2>
-            <p className="text-cream/60 font-serif italic">Décodage des signaux amoureux</p>
+            <h2 className="text-4xl font-script text-rose-pale mb-2">{t('dashboard.loading_title')}</h2>
+            <p className="text-cream/60 font-serif italic">{t('dashboard.loading_subtitle')}</p>
         </div>
       </div>
     );
@@ -289,9 +291,9 @@ const SpyDashboard = () => {
       <div className="min-h-screen bg-ruby-dark flex items-center justify-center p-6">
          <div className="text-center">
             <Ban className="mx-auto text-rose-gold/80 mb-6" size={64} />
-            <h1 className="text-5xl font-script text-rose-pale mb-4">Accès Interdit</h1>
+            <h1 className="text-5xl font-script text-rose-pale mb-4">{t('dashboard.access_denied')}</h1>
             <button onClick={() => navigate('/')} className="px-8 py-3 bg-rose-gold/10 text-rose-gold border border-rose-gold/50 rounded-full">
-                Retour
+                {t('common.close')}
             </button>
          </div>
       </div>
@@ -313,22 +315,22 @@ const SpyDashboard = () => {
             <div>
                 <div className="flex items-center gap-2 mb-2">
                     <span className="bg-rose-gold/20 text-rose-gold text-[10px] px-2 py-0.5 rounded uppercase tracking-wider font-bold">
-                        Dossier : {data?.valentine || 'Inconnu'}
+                        {t('dashboard.folder')}: {data?.valentine || 'Inconnu'}
                     </span>
                     {!areDetailsLocked && (
                         <span className="bg-emerald-500/20 text-emerald-400 text-[10px] px-2 py-0.5 rounded uppercase tracking-wider animate-pulse border border-emerald-500/30">
-                            Pack Espion ACTIVÉ
+                            {t('dashboard.spy_pack_active')}
                         </span>
                     )}
                 </div>
                 <h1 className="text-5xl md:text-6xl font-script text-transparent bg-clip-text bg-gradient-to-r from-rose-pale via-cream to-rose-gold">
-                    Rapport Sentimental
+                    {t('dashboard.report_title')}
                 </h1>
             </div>
             
             <div className="flex items-center gap-3">
                  <div className="text-right">
-                    <p className="text-[10px] text-rose-gold/60 uppercase tracking-widest">Dernière activité</p>
+                    <p className="text-[10px] text-rose-gold/60 uppercase tracking-widest">{t('dashboard.last_activity')}</p>
                     <p className="text-xs font-mono text-rose-pale">{lastRefreshed.toLocaleTimeString()}</p>
                  </div>
                  <div className={`w-3 h-3 rounded-full ${connectionStatus === 'connected' ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`}></div>
@@ -351,11 +353,11 @@ const SpyDashboard = () => {
                         <div className={`mb-6 p-6 rounded-full border-2 shadow-inner ${hasAnswered ? 'bg-ruby-light/10 border-rose-gold text-rose-gold animate-bounce-slow' : 'bg-rose-gold/5 border-rose-gold/20 text-rose-gold'}`}>
                             {hasAnswered ? <HeartHandshake size={56} /> : isRejected ? <Ban size={56} /> : <Loader2 size={56} className="animate-spin-slow" />}
                         </div>
-                        <h2 className="text-xs font-serif text-rose-pale/50 uppercase tracking-[0.2em] mb-2">Verdict</h2>
+                        <h2 className="text-xs font-serif text-rose-pale/50 uppercase tracking-[0.2em] mb-2">{t('dashboard.verdict')}</h2>
                         <div className="text-4xl md:text-5xl font-script text-cream leading-tight mb-4">
                             {hasAnswered 
-                                ? <span className="text-transparent bg-clip-text bg-gradient-to-r from-rose-gold via-cream to-rose-gold">Elle a dit Oui !</span>
-                                : "En Réflexion..."
+                                ? <span className="text-transparent bg-clip-text bg-gradient-to-r from-rose-gold via-cream to-rose-gold">{t('dashboard.said_yes')}</span>
+                                : t('dashboard.thinking')
                             }
                         </div>
                     </div>
@@ -367,7 +369,7 @@ const SpyDashboard = () => {
                     {areDetailsLocked && (
                         <div className="absolute inset-0 bg-black/80 backdrop-blur-sm z-10 flex items-center justify-center">
                             <div className="flex items-center gap-2 text-rose-gold/50 text-xs uppercase tracking-widest">
-                                <Lock size={14} /> Analyse IA Verrouillée
+                                <Lock size={14} /> {t('dashboard.analysis_locked')}
                             </div>
                         </div>
                     )}
@@ -375,8 +377,8 @@ const SpyDashboard = () => {
                     <div className="flex items-center gap-3 mb-4">
                         <div className="p-2 bg-purple-500/10 rounded-lg text-purple-400"><Brain size={20} /></div>
                         <div>
-                            <h3 className="text-sm font-bold text-purple-200">Profil Psychologique</h3>
-                            <p className="text-[10px] text-purple-400/50 uppercase tracking-widest">Analyse comportementale</p>
+                            <h3 className="text-sm font-bold text-purple-200">{t('dashboard.psych_profile')}</h3>
+                            <p className="text-[10px] text-purple-400/50 uppercase tracking-widest">{t('dashboard.behavior_analysis')}</p>
                         </div>
                     </div>
 
@@ -390,7 +392,7 @@ const SpyDashboard = () => {
                     <div className="flex items-start gap-3 bg-emerald-900/10 border border-emerald-500/10 p-3 rounded-lg">
                         <MessageCircle size={16} className="text-emerald-400 mt-0.5" />
                         <div>
-                            <p className="text-[10px] text-emerald-400 font-bold uppercase mb-1">Conseil Tactique</p>
+                            <p className="text-[10px] text-emerald-400 font-bold uppercase mb-1">{t('dashboard.tactical_advice')}</p>
                             <p className="text-xs text-emerald-100/70 italic">"{analysis.advice}"</p>
                         </div>
                     </div>
@@ -400,7 +402,7 @@ const SpyDashboard = () => {
                 <div className="grid grid-cols-2 gap-4">
                     <div className="bg-black/20 border border-rose-gold/10 rounded-2xl p-4 backdrop-blur-md">
                         <div className="flex items-center gap-2 mb-2 text-rose-gold/50">
-                            <Eye size={14} /> <span className="text-[9px] uppercase">Ouvertures</span>
+                            <Eye size={14} /> <span className="text-[9px] uppercase">{t('dashboard.stat_views')}</span>
                         </div>
                         <div className="text-2xl font-bold text-cream">
                             {areDetailsLocked ? <span className="blur-sm text-white/30">??</span> : enrichedLogs.filter(l => l.action === 'viewed').length}
@@ -408,7 +410,7 @@ const SpyDashboard = () => {
                     </div>
                     <div className="bg-black/20 border border-rose-gold/10 rounded-2xl p-4 backdrop-blur-md">
                         <div className="flex items-center gap-2 mb-2 text-rose-gold/50">
-                            <Zap size={14} /> <span className="text-[9px] uppercase">Tentatives NON</span>
+                            <Zap size={14} /> <span className="text-[9px] uppercase">{t('dashboard.stat_no')}</span>
                         </div>
                         <div className="text-2xl font-bold text-cream">
                             {areDetailsLocked ? <span className="blur-sm text-white/30">??</span> : (data?.attempts || 0)}
@@ -419,7 +421,7 @@ const SpyDashboard = () => {
                 {/* 4. LIEN */}
                 <div className="bg-rose-gold/5 border border-rose-gold/20 rounded-xl p-4 flex items-center gap-3">
                     <div className="flex-1 overflow-hidden">
-                        <p className="text-[10px] text-rose-gold/70 uppercase tracking-widest mb-1">Lien de la cible</p>
+                        <p className="text-[10px] text-rose-gold/70 uppercase tracking-widest mb-1">{t('dashboard.target_link')}</p>
                         <p className="text-xs font-mono text-cream/60 truncate select-all">{`${window.location.origin}/v/${id}`}</p>
                     </div>
                     <button onClick={copyLink} className="p-2 hover:bg-rose-gold/20 rounded text-rose-gold transition-colors">
@@ -435,8 +437,8 @@ const SpyDashboard = () => {
                     
                     <div className="px-8 py-6 border-b border-rose-gold/10 bg-black/20 flex justify-between items-center">
                         <div>
-                            <h3 className="text-xl font-serif text-rose-pale mb-1">Chronologie de l'Amour</h3>
-                            <p className="text-[10px] text-rose-gold/50 font-mono uppercase tracking-widest">Le film de sa réaction</p>
+                            <h3 className="text-xl font-serif text-rose-pale mb-1">{t('dashboard.timeline_title')}</h3>
+                            <p className="text-[10px] text-rose-gold/50 font-mono uppercase tracking-widest">{t('dashboard.timeline_subtitle')}</p>
                         </div>
                         <Clock className="text-rose-gold/40" size={24} />
                     </div>
@@ -445,8 +447,8 @@ const SpyDashboard = () => {
                          {(!enrichedLogs || enrichedLogs.length === 0) && (data?.attempts || 0) === 0 ? (
                              <div className="h-full flex flex-col items-center justify-center text-rose-gold/30">
                                  <Fingerprint size={48} className="mb-4 opacity-50" />
-                                 <p className="font-serif italic text-lg">En attente d'action...</p>
-                                 <p className="text-xs uppercase tracking-widest mt-2 opacity-50 animate-pulse">Le lien a été envoyé ?</p>
+                                 <p className="font-serif italic text-lg">{t('dashboard.waiting_action')}</p>
+                                 <p className="text-xs uppercase tracking-widest mt-2 opacity-50 animate-pulse">{t('dashboard.link_sent_question')}</p>
                              </div>
                          ) : (
                              <div className={`space-y-6 transition-all duration-500 ${areDetailsLocked ? 'blur-[8px] opacity-40 select-none pointer-events-none' : ''}`}>
@@ -492,7 +494,7 @@ const SpyDashboard = () => {
                         <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/80 backdrop-blur-md animate-fade-in">
                             <div className="w-full max-w-sm mx-4 bg-[#1a0b12] border border-rose-gold/40 p-8 rounded-2xl shadow-2xl relative">
                                 <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 bg-rose-gold text-ruby-dark text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-widest shadow-lg">
-                                    Zone Espion
+                                    {t('dashboard.spy_zone')}
                                 </div>
 
                                 <div className="flex flex-col items-center text-center mt-4">
@@ -501,13 +503,13 @@ const SpyDashboard = () => {
                                     </div>
                                     
                                     <h3 className="text-2xl font-script text-rose-pale mb-2">
-                                        Décodez ses émotions
+                                        {t('dashboard.decode_emotions')}
                                     </h3>
                                     
                                     <ul className="text-xs text-left text-rose-pale/70 font-sans mb-6 space-y-3 bg-black/30 p-5 rounded-lg border border-white/5">
-                                        <li className="flex items-center gap-3"><Brain size={14} className="text-purple-400"/> <span><strong>Profil Psychologique :</strong> Est-elle joueuse, amoureuse ou indécise ?</span></li>
-                                        <li className="flex items-center gap-3"><Zap size={14} className="text-purple-400"/> <span><strong>Indice de Résistance :</strong> Combien de fois a-t-elle essayé de cliquer "NON" ?</span></li>
-                                        <li className="flex items-center gap-3"><Eye size={14} className="text-purple-400"/> <span><strong>Preuves :</strong> Chronologie exacte de ses actions.</span></li>
+                                        <li className="flex items-center gap-3"><Brain size={14} className="text-purple-400"/> <span><strong>{t('dashboard.psych_profile')} :</strong> {t('dashboard.lock_feat_1')}</span></li>
+                                        <li className="flex items-center gap-3"><Zap size={14} className="text-purple-400"/> <span><strong>{t('dashboard.stat_no')} :</strong> {t('dashboard.lock_feat_2')}</span></li>
+                                        <li className="flex items-center gap-3"><Eye size={14} className="text-purple-400"/> <span><strong>{t('dashboard.timeline_title')} :</strong> {t('dashboard.lock_feat_3')}</span></li>
                                     </ul>
 
                                     <a 
@@ -515,12 +517,12 @@ const SpyDashboard = () => {
                                        onClick={handleUpsellClick}
                                        className="group w-full py-4 rounded-lg bg-gradient-to-r from-rose-gold via-[#e8b594] to-rose-gold background-animate hover:bg-white text-ruby-dark text-xs font-bold uppercase tracking-[0.2em] shadow-lg transition-all flex items-center justify-center gap-3 cursor-pointer transform hover:scale-[1.02]"
                                     >
-                                        <span>Débloquer le Profil Complet ({storedOfferPrice})</span>
+                                        <span>{t('dashboard.unlock_btn')} ({storedOfferPrice})</span>
                                         <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform" />
                                     </a>
                                     
                                     <p className="mt-4 text-[9px] text-rose-gold/30 uppercase tracking-widest">
-                                        Paiement sécurisé • Discret • Immédiat
+                                        {t('dashboard.secure_payment')}
                                     </p>
                                 </div>
                             </div>
@@ -536,7 +538,7 @@ const SpyDashboard = () => {
                 onClick={() => navigate('/')}
                 className="text-[10px] uppercase tracking-[0.3em] text-rose-gold/40 hover:text-rose-gold transition-colors font-serif"
             >
-                Fermer le Dossier
+                {t('dashboard.close_folder')}
             </button>
         </footer>
 

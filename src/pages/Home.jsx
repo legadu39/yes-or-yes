@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
+import { useTranslation, Trans } from 'react-i18next';
 import { 
   Eye, Sparkles, Copy, Heart, TrendingUp, CreditCard, 
   Timer, Loader2, Check, Shield, RefreshCw, PartyPopper, Lock, Crown, 
@@ -9,12 +10,12 @@ import {
 import confetti from 'canvas-confetti';
 
 // --- CONFIGURATION ---
-const FAKE_NOTIFICATIONS = [
-  { name: "Lucas (Paris)", action: "a piégé sa copine", time: "à l'instant" },
-  { name: "Sarah (Lyon)", action: "a pris le pack Espion", time: "il y a 2 min" },
-  { name: "Amine (Marseille)", action: "a reçu un OUI", time: "il y a 5 min" },
-  { name: "Julie (Bordeaux)", action: "consulte le rapport", time: "à l'instant" },
-  { name: "Thomas (Lille)", action: "a piégé son crush", time: "il y a 1 min" }
+const FAKE_NOTIFICATIONS_DATA = [
+  { name: "Lucas (Paris)", actionKey: "notif_action_trap" },
+  { name: "Sarah (Lyon)", actionKey: "notif_action_spy" },
+  { name: "Amine (Marseille)", actionKey: "notif_action_yes" },
+  { name: "Julie (Bordeaux)", actionKey: "notif_action_report" },
+  { name: "Thomas (Lille)", actionKey: "notif_action_crush" }
 ];
 
 const STRIPE_LINKS = {
@@ -30,6 +31,7 @@ const capitalize = (str) => {
 
 // --- LE CŒUR DU PIÈGE (DÉMO SIMPLIFIÉE) ---
 const ValentineDemo = ({ onClose }) => {
+    const { t } = useTranslation();
     const [step, setStep] = useState('envelope'); // envelope | game | success
     const [btnOffset, setBtnOffset] = useState({ x: 0, y: 0 });
     const [isPlaying, setIsPlaying] = useState(false);
@@ -85,7 +87,7 @@ const ValentineDemo = ({ onClose }) => {
                 <div onClick={handleStart} className="relative cursor-pointer p-8 text-center animate-fade-in z-10 w-full h-full flex flex-col items-center justify-center hover:scale-105 transition-transform">
                     <MailOpen className="w-20 h-20 text-rose-gold animate-bounce mb-4 mx-auto" />
                     <h2 className="text-2xl font-script text-rose-pale mb-2">Pour Léa</h2>
-                    <p className="text-cream/60 text-[10px] uppercase tracking-widest animate-pulse">Toucher pour ouvrir</p>
+                    <p className="text-cream/60 text-[10px] uppercase tracking-widest animate-pulse">{t('valentine.letter_subtitle')}</p>
                     <p className="mt-8 text-rose-gold/30 font-serif italic text-xs">De la part d'Arthur</p>
                 </div>
             )}
@@ -93,10 +95,12 @@ const ValentineDemo = ({ onClose }) => {
             {/* ÉTAPE 2 : LE JEU */}
             {step === 'game' && (
                 <div className="w-full px-4 text-center z-20 h-full flex flex-col items-center justify-center">
-                    <p className="text-rose-pale/80 font-serif italic text-sm mb-6">Une question importante...</p>
+                    <p className="text-rose-pale/80 font-serif italic text-sm mb-6">{t('valentine.intro_question')}</p>
                     <h1 className="text-4xl font-script text-rose-pale mb-10 leading-tight">
-                        Veux-tu être ma <br/>
-                        <span className="text-ruby-light">Valentine ?</span>
+                        <Trans i18nKey="valentine.main_question">
+                            Veux-tu être ma <br/>
+                            <span className="text-ruby-light">Valentine ?</span>
+                        </Trans>
                     </h1>
 
                     <div className="w-full relative h-[180px] flex flex-col items-center gap-6">
@@ -104,7 +108,7 @@ const ValentineDemo = ({ onClose }) => {
                             onClick={handleYes}
                             className="w-full max-w-[200px] py-3 bg-gradient-to-r from-rose-gold to-[#e8b594] text-ruby-dark font-bold uppercase tracking-widest rounded-full shadow-lg z-20 transition-transform hover:scale-105"
                         >
-                            OUI !
+                            {t('valentine.btn_yes')}
                         </button>
 
                         {/* Le Bouton Qui Fuit */}
@@ -126,10 +130,10 @@ const ValentineDemo = ({ onClose }) => {
                     {/* MENTION STRATÉGIQUE */}
                     <div className="mt-8 bg-black/40 border border-rose-gold/10 p-3 rounded-lg max-w-[280px] mx-auto animate-pulse">
                         <p className="text-[9px] text-rose-gold/60 uppercase tracking-widest font-bold flex items-center justify-center gap-2 mb-1">
-                            <AlertTriangle size={10} /> Mode Démo Simplifié
+                            <AlertTriangle size={10} /> {t('home.demo_mode_title')}
                         </p>
                         <p className="text-[9px] text-rose-gold/40 italic leading-tight">
-                            Ce que vous voyez là est un brouillon, la vraie version est un bijou visuel qui va la faire craquer.
+                            {t('home.demo_mode_desc')}
                         </p>
                     </div>
                 </div>
@@ -146,7 +150,7 @@ const ValentineDemo = ({ onClose }) => {
                         (C'est ce que vous verrez quand elle craquera)
                     </p>
                     <button onClick={onClose} className="text-xs uppercase tracking-widest text-rose-gold border-b border-rose-gold/30 pb-1">
-                        Fermer la démo
+                        {t('common.close')}
                     </button>
                 </div>
             )}
@@ -158,6 +162,8 @@ const ValentineDemo = ({ onClose }) => {
 const Home = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { t, i18n } = useTranslation();
+
   const { 
     createInvitation, 
     verifyPaymentStatus, 
@@ -459,14 +465,21 @@ const Home = () => {
 
   useEffect(() => {
     const showNotification = () => {
-      const randomNotif = FAKE_NOTIFICATIONS[Math.floor(Math.random() * FAKE_NOTIFICATIONS.length)];
-      setActiveNotif(randomNotif);
+      const randomData = FAKE_NOTIFICATIONS_DATA[Math.floor(Math.random() * FAKE_NOTIFICATIONS_DATA.length)];
+      // Construction dynamique de la notif traduite
+      const translatedNotif = {
+        name: randomData.name,
+        action: t(`home.${randomData.actionKey}`),
+        time: t('home.time_min', { count: Math.floor(Math.random() * 5) + 1 })
+      };
+      
+      setActiveNotif(translatedNotif);
       setTimeout(() => setActiveNotif(null), 6000);
     };
     const t1 = setTimeout(showNotification, 2000);
     const t2 = setInterval(showNotification, 18000);
     return () => { clearTimeout(t1); clearInterval(t2); };
-  }, []);
+  }, [t]);
 
   // --- RENDER FORMULAIRE ---
   if (status === 'success' && generatedLinks) {
@@ -489,8 +502,8 @@ const Home = () => {
             </div>
           </div>
 
-          <h2 className="text-3xl font-script text-rose-pale mb-2">Invitation Prête</h2>
-          <p className="text-rose-pale/60 mb-8">Le destin de {formData.valentine} est entre vos mains.</p>
+          <h2 className="text-3xl font-script text-rose-pale mb-2">{t('home.success_title')}</h2>
+          <p className="text-rose-pale/60 mb-8">{t('home.success_subtitle', { name: formData.valentine })}</p>
 
           {answerReceived && (
               <div className="mb-10 p-1 relative group transform hover:scale-105 transition-transform duration-500 animate-bounce-slow cursor-pointer">
@@ -512,7 +525,7 @@ const Home = () => {
 
                       {monitoringToken && (
                            <button onClick={() => window.location.href = generatedLinks.spy} className="mt-2 px-8 py-3 bg-gradient-to-r from-rose-gold to-amber-200 hover:to-white text-ruby-dark rounded-full font-bold text-xs uppercase tracking-[0.2em] shadow-[0_0_20px_rgba(225,183,144,0.4)] transition-all transform active:scale-95 flex items-center gap-2">
-                             <Eye size={16} /> Voir le Rapport
+                             <Eye size={16} /> {t('home.success_spy_btn')}
                            </button>
                       )}
                   </div>
@@ -522,7 +535,7 @@ const Home = () => {
           <div className="bg-ruby-dark/50 rounded-xl p-6 mb-6 border border-rose-gold/30">
             <h3 className="text-rose-gold font-serif mb-4 flex items-center justify-center gap-2">
               <Heart size={18} className="fill-rose-gold" />
-              Lien pour {formData.valentine}
+              {t('home.success_link_valentine', { name: formData.valentine })}
             </h3>
             <div className="flex gap-2 items-center bg-black/30 p-3 rounded-lg border border-rose-gold/10">
               <code className="text-rose-pale/80 text-sm flex-1 truncate font-mono select-all">
@@ -535,7 +548,7 @@ const Home = () => {
             <div className="mt-2 flex justify-center">
                  <span className="flex items-center gap-1 text-[10px] text-rose-gold/60 bg-rose-gold/5 px-2 py-0.5 rounded-full border border-rose-gold/10">
                     <div className="w-1.5 h-1.5 rounded-full bg-rose-gold animate-pulse"></div>
-                    En attente de clic...
+                    {t('home.success_copy_waiting')}
                  </span>
             </div>
           </div>
@@ -543,11 +556,11 @@ const Home = () => {
           {generatedLinks.spy ? (
             <div className="bg-black/40 rounded-xl p-6 mb-8 border border-purple-500/30 relative overflow-hidden group">
               <div className="absolute top-0 right-0 bg-purple-500/20 px-3 py-1 rounded-bl-lg text-[10px] text-purple-300 uppercase tracking-widest font-bold border-l border-b border-purple-500/20">
-                {formData.plan === 'spy' || formData.plan === 'premium' ? 'Activé' : 'Limité'}
+                {formData.plan === 'spy' || formData.plan === 'premium' ? t('home.success_spy_active') : t('home.success_spy_limited')}
               </div>
               <h3 className="text-purple-300 font-serif mb-4 flex items-center justify-center gap-2">
                 <Shield size={18} />
-                {formData.plan === 'spy' || formData.plan === 'premium' ? 'Espace Espion' : 'Suivi Basique'}
+                {formData.plan === 'spy' || formData.plan === 'premium' ? t('home.success_spy_title') : 'Suivi Basique'}
               </h3>
               <div className="flex gap-2 items-center bg-black/50 p-3 rounded-lg border border-purple-500/20">
                 <code className="text-purple-200/60 text-sm flex-1 truncate font-mono select-all blur-[2px] group-hover:blur-0 transition-all duration-500">
@@ -559,7 +572,7 @@ const Home = () => {
               </div>
               <div className="flex justify-center gap-4 mt-4">
                   <button onClick={() => window.location.href = generatedLinks.spy} className="flex items-center gap-2 px-4 py-2 bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 text-sm rounded-full transition-all border border-purple-500/30">
-                      <Eye size={14} /> Ouvrir le Dashboard
+                      <Eye size={14} /> {t('home.success_spy_btn')}
                   </button>
               </div>
             </div>
@@ -567,21 +580,21 @@ const Home = () => {
              <div className="bg-gradient-to-br from-gray-900 to-black rounded-xl p-6 mb-8 border border-white/10 relative overflow-hidden">
                 <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-2 text-gray-400">
-                        <Lock size={18} /> <span className="font-serif">Mode Espion Verrouillé</span>
+                        <Lock size={18} /> <span className="font-serif">{t('home.success_upsell_title')}</span>
                     </div>
                     <span className="text-[10px] bg-gray-700 text-gray-300 px-2 py-0.5 rounded">BASIC</span>
                 </div>
                 <p className="text-xs text-gray-500 mb-4">
-                    Vous ne saurez pas combien de fois elle a hésité ou cliqué sur "NON".
+                    {t('home.success_upsell_desc')}
                 </p>
                 <a href={upsellSafeUrl} className="flex w-full items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-purple-900 to-purple-800 hover:brightness-110 text-purple-100 text-sm rounded-lg transition-all border border-purple-500/30 shadow-lg">
-                    <Sparkles size={14} /> Débloquer le Carnet Secret (2.50€)
+                    <Sparkles size={14} /> {t('home.success_upsell_btn')}
                 </a>
              </div>
           )}
 
           <button onClick={() => { setStatus('idle'); setGeneratedLinks(null); setAnswerReceived(null); setFormData({ ...formData, valentine: '' }); }} className="text-rose-pale/50 hover:text-rose-pale text-sm underline underline-offset-4 transition-colors">
-            Créer une autre invitation
+            {t('home.success_new_btn')}
           </button>
         </div>
       </div>
@@ -591,6 +604,19 @@ const Home = () => {
   return (
     <div className={`min-h-screen bg-ruby-dark p-4 flex flex-col items-center justify-center relative overflow-x-hidden pt-16 ${mounted ? 'opacity-100' : 'opacity-0'} transition-opacity duration-1000`}>
       
+      {/* SÉLECTEUR DE LANGUE (Top Left) */}
+      <div className="fixed top-4 left-4 z-50 flex gap-2">
+         {['fr', 'en', 'es'].map(lang => (
+            <button 
+                key={lang} 
+                onClick={() => i18n.changeLanguage(lang)}
+                className={`text-xs font-bold uppercase p-2 rounded-full border border-rose-gold/20 transition-all ${i18n.language === lang ? 'bg-rose-gold text-ruby-dark' : 'bg-ruby-dark/50 text-rose-gold/50 hover:text-rose-gold'}`}
+            >
+                {lang}
+            </button>
+         ))}
+      </div>
+
       <div className="fixed inset-0 pointer-events-none">
         <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-ruby-DEFAULT/20 rounded-full blur-[120px] animate-pulse-slow"></div>
         <div className="absolute bottom-[-10%] right-[-10%] w-[600px] h-[600px] bg-[#4a0a18]/40 rounded-full blur-[150px]"></div>
@@ -599,7 +625,9 @@ const Home = () => {
       <div className="fixed top-0 left-0 w-full bg-ruby-dark/95 border-b border-rose-gold/30 backdrop-blur-md z-50 py-2 px-4 flex justify-center items-center gap-3">
         <Timer size={14} className="text-rose-gold animate-pulse" />
         <p className="text-xs md:text-sm text-cream font-medium tracking-wide">
-          Faites votre demande avant le <span className="text-rose-gold font-bold">14 Février</span>.
+          <Trans i18nKey="home.timer">
+            Faites votre demande avant le <span className="text-rose-gold font-bold">14 Février</span>.
+          </Trans>
         </p>
       </div>
 
@@ -607,12 +635,12 @@ const Home = () => {
         <div className="inline-flex items-center justify-center p-3 mb-6 rounded-full bg-rose-gold/10 border border-rose-gold/20 shadow-lg shadow-ruby-DEFAULT/10">
             <Sparkles className="text-rose-gold w-6 h-6 animate-spin-slow" />
         </div>
-        <h1 className="text-7xl md:text-8xl font-script text-rose-pale mb-4 drop-shadow-lg">YesOrYes</h1>
+        <h1 className="text-7xl md:text-8xl font-script text-rose-pale mb-4 drop-shadow-lg">{t('home.title')}</h1>
         
         <p className="text-cream/90 text-sm md:text-base font-serif italic mb-6 leading-relaxed border-l-2 border-rose-gold/50 pl-4 py-2 bg-ruby-light/10 rounded-r-lg shadow-lg">
-          Envoyez le lien. Le bouton "NON" s'enfuira quand elle essaiera de cliquer. <br/>
+          {t('home.subtitle')} <br/>
           <span className="text-rose-gold/70 text-xs uppercase tracking-widest not-italic font-bold">
-            (Regardez-la galérer...)
+            {t('home.subtitle_note')}
           </span>
         </p>
 
@@ -621,7 +649,7 @@ const Home = () => {
             onClick={() => setShowDemo(true)}
             className="flex items-center gap-2 mx-auto px-6 py-3 bg-rose-gold/10 hover:bg-rose-gold/20 text-rose-gold rounded-full text-xs uppercase tracking-widest border border-rose-gold/30 transition-all hover:scale-105 shadow-[0_0_15px_rgba(225,29,72,0.2)]"
         >
-            <Play size={12} fill="currentColor" /> Voir un exemple du piège
+            <Play size={12} fill="currentColor" /> {t('home.demo_btn')}
         </button>
       </header>
 
@@ -629,22 +657,22 @@ const Home = () => {
         <form onSubmit={handleSubmit} className="space-y-10">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div className="group relative">
-              <label className="block text-rose-gold text-xs uppercase tracking-widest mb-2 ml-1">De la part de</label>
+              <label className="block text-rose-gold text-xs uppercase tracking-widest mb-2 ml-1">{t('home.form_sender')}</label>
               <input 
                 required type="text" maxLength={20} disabled={status !== 'idle'}
                 className="w-full p-3 bg-transparent border-b border-rose-gold/30 text-cream text-xl focus:border-rose-gold outline-none transition-all font-serif italic"
-                placeholder="Votre Prénom"
+                placeholder={t('home.form_sender_placeholder')}
                 value={formData.sender}
                 onFocus={preloadAssets}
                 onChange={(e) => setFormData({...formData, sender: capitalize(e.target.value)})}
               />
             </div>
             <div className="group relative">
-               <label className="block text-rose-gold text-xs uppercase tracking-widest mb-2 ml-1">Pour</label>
+               <label className="block text-rose-gold text-xs uppercase tracking-widest mb-2 ml-1">{t('home.form_valentine')}</label>
                <input 
                 required type="text" maxLength={20} disabled={status !== 'idle'}
                 className="w-full p-3 bg-transparent border-b border-rose-gold/30 text-cream text-xl focus:border-rose-gold outline-none transition-all font-serif italic"
-                placeholder="Son Prénom"
+                placeholder={t('home.form_valentine_placeholder')}
                 value={formData.valentine}
                 onFocus={preloadAssets}
                 onChange={(e) => setFormData({...formData, valentine: capitalize(e.target.value)})}
@@ -666,10 +694,10 @@ const Home = () => {
               >
                 <div>
                   <div className="flex justify-between items-start mb-4">
-                    <span className="text-cream font-medium text-lg">L'Essentiel</span>
-                    <span className="text-rose-gold italic text-sm">1.50€</span>
+                    <span className="text-cream font-medium text-lg">{t('home.plan_basic_title')}</span>
+                    <span className="text-rose-gold italic text-sm">{t('home.plan_basic_price')}</span>
                   </div>
-                  <p className="text-sm text-cream/60 italic font-light">Expérience immersive classique. Simple et efficace.</p>
+                  <p className="text-sm text-cream/60 italic font-light">{t('home.plan_basic_desc')}</p>
                 </div>
               </div>
 
@@ -677,16 +705,20 @@ const Home = () => {
                 onClick={() => status === 'idle' && setFormData({...formData, plan: 'spy'})}
                 className={`relative cursor-pointer rounded-xl border transition-all duration-300 overflow-hidden ${formData.plan === 'spy' ? 'bg-gradient-to-br from-ruby-DEFAULT/30 to-ruby-dark/30 border-rose-gold shadow-rosegold scale-105' : 'bg-transparent border-rose-gold/20 hover:border-rose-gold/50'} ${status !== 'idle' ? 'opacity-50' : ''}`}
               >
-                <div className="absolute top-0 right-0 bg-rose-gold text-ruby-dark text-[10px] font-bold px-2 py-0.5 rounded-bl-lg">POPULAIRE</div>
+                <div className="absolute top-0 right-0 bg-rose-gold text-ruby-dark text-[10px] font-bold px-2 py-0.5 rounded-bl-lg">{t('home.plan_spy_tag')}</div>
                 <div className="p-6 relative z-10">
                   <div className="flex justify-between items-start mb-2">
                     <div className="flex items-center gap-2">
                       <Sparkles className="w-4 h-4 text-rose-gold animate-pulse" />
-                      <span className="text-cream font-medium text-lg">L'Espion</span>
+                      <span className="text-cream font-medium text-lg">{t('home.plan_spy_title')}</span>
                     </div>
-                    <span className="text-rose-gold font-bold text-lg">2.50€</span>
+                    <span className="text-rose-gold font-bold text-lg">{t('home.plan_spy_price')}</span>
                   </div>
-                  <p className="text-sm text-cream/90 mb-3 italic font-light">Inclut le <strong>Carnet Secret</strong> : suivez ses clics et refus en direct.</p>
+                  <p className="text-sm text-cream/90 mb-3 italic font-light">
+                      <Trans i18nKey="home.plan_spy_desc">
+                          Inclut le <strong>Carnet Secret</strong> : suivez ses clics et refus en direct.
+                      </Trans>
+                  </p>
                 </div>
               </div>
             </div>
@@ -700,27 +732,27 @@ const Home = () => {
             {status === 'idle' && (
                 <span className="flex items-center justify-center gap-3 relative z-10">
                     {formData.plan === 'spy' ? (
-                        <>Inviter + Activer le Mouchard <Shield size={16} fill="currentColor" /></>
+                        <>{t('home.btn_create_spy')} <Shield size={16} fill="currentColor" /></>
                     ) : (
-                        <>Sceller l'invitation <Heart size={16} fill="currentColor" /></>
+                        <>{t('home.btn_create')} <Heart size={16} fill="currentColor" /></>
                     )}
                 </span>
             )}
-            {status === 'processing' && <span className="flex items-center justify-center gap-3 animate-pulse">Création...</span>}
-            {status === 'paying' && <span className="flex items-center justify-center gap-3"><CreditCard size={16} className="animate-bounce" /> Redirection...</span>}
-            {status === 'verifying' && <span className="flex items-center justify-center gap-3"><Loader2 size={16} className="animate-spin" /> Validation Bancaire...</span>}
+            {status === 'processing' && <span className="flex items-center justify-center gap-3 animate-pulse">{t('home.btn_processing')}</span>}
+            {status === 'paying' && <span className="flex items-center justify-center gap-3"><CreditCard size={16} className="animate-bounce" /> {t('home.btn_paying')}</span>}
+            {status === 'verifying' && <span className="flex items-center justify-center gap-3"><Loader2 size={16} className="animate-spin" /> {t('home.btn_verifying')}</span>}
             {status === 'verifying_long' && <span className="flex items-center justify-center gap-3"><RefreshCw size={16} /> C'est long... Vérifier manuellement</span>}
-            {status === 'error' && <span>Erreur - Réessayer</span>}
+            {status === 'error' && <span>{t('common.error')} - Réessayer</span>}
           </button>
         </form>
       </main>
 
       <footer className="mt-auto py-8 text-center relative z-10 w-full opacity-60 hover:opacity-100 transition-opacity">
         <div className="flex flex-wrap justify-center gap-4 md:gap-8 text-[10px] uppercase tracking-widest text-rose-gold/50 font-serif">
-            <Link to="/legal/cgv" className="hover:text-rose-gold transition-colors">CGV</Link>
-            <Link to="/legal/confidentialite" className="hover:text-rose-gold transition-colors">Confidentialité</Link>
-            <Link to="/legal/mentions-legales" className="hover:text-rose-gold transition-colors">Mentions Légales</Link>
-            <a href="mailto:contact@yesoryes.com" className="hover:text-rose-gold transition-colors">Contact</a>
+            <Link to="/legal/cgv" className="hover:text-rose-gold transition-colors">{t('home.footer_cgv')}</Link>
+            <Link to="/legal/confidentialite" className="hover:text-rose-gold transition-colors">{t('home.footer_privacy')}</Link>
+            <Link to="/legal/mentions-legales" className="hover:text-rose-gold transition-colors">{t('home.footer_legal')}</Link>
+            <a href="mailto:contact@yesoryes.com" className="hover:text-rose-gold transition-colors">{t('home.footer_contact')}</a>
         </div>
         <p className="mt-4 text-[9px] text-ruby-light/30">YesOrYes © {new Date().getFullYear()} • Fait avec Amour</p>
       </footer>
